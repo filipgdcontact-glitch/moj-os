@@ -49,10 +49,13 @@ const P = {
   arrowRight: "M5 12h14M13 6l6 6-6 6",
   task: "M5 4h14v16H5zM8.5 12l2.5 2.5 4.5-5",
   undo: "M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
+  flagFill: "M5 21V4M5 4h11.5l-2.2 4.2 2.2 4.3H5",
+  home: "M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z",
+  grid: "M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z",
 };
 export function Icon({ n, s = 18, className = "", style }) {
   return (
-    <svg className={`ic ${className}`} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={style}>
+    <svg className={`ic ${className}`} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={style}>
       <path d={P[n] || P.dot} />
     </svg>
   );
@@ -210,10 +213,15 @@ export function ConfirmModal({ m, top }) {
 // ---------- Oznake ----------
 export function PriorityTag({ v, always }) {
   if (!v || (v === "normal" && !always)) return null;
-  return <span className={`tag prio-${v}`}><span className="prio-bars" aria-hidden="true"><i /><i /><i /></span>{prioLabel(v)}</span>;
+  return <span className={`prio prio-${v}`}><Icon n="flagFill" s={12} />{prioLabel(v)}</span>;
 }
 export function StatusTag({ v }) {
-  return <span className={`tag st st-${v}`}>{statusLabel(v)}</span>;
+  return <span className={`tag st st-${v}`}><span className="st-dot" aria-hidden="true" />{statusLabel(v)}</span>;
+}
+export function ProjectAvatar({ p, size = "md" }) {
+  if (!p) return null;
+  const letter = (p.name || "?").trim().replace(/^[^\p{L}\p{N}]+/u, "").charAt(0).toUpperCase() || "?";
+  return <span className={`pav pav-${size}`} style={{ "--pc": p.color }} aria-hidden="true">{letter}</span>;
 }
 export function TypeTag({ type }) {
   return <span className={`type type-${type}`}><TypeMark type={type} />{ENTRY_TYPE[type]}</span>;

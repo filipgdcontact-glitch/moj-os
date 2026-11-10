@@ -182,7 +182,7 @@ export const makeNote = (p = {}) => ({
 /** Settings */
 export const makeSettings = (p = {}) => {
   const t = nowISO();
-  return { id: "settings", kind: "settings", theme: "dark", sidebarCollapsed: false, version: 1, createdAt: t, updatedAt: t, ...p };
+  return { id: "settings", kind: "settings", theme: "light", design: 2, sidebarCollapsed: false, version: 1, createdAt: t, updatedAt: t, ...p };
 };
 
 export const KINDS = { space: "spaces", project: "projects", task: "tasks", event: "events", note: "notes" };

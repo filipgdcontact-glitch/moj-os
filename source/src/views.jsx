@@ -6,10 +6,10 @@ import {
   projStatusLabel, today, fmtDay,
 } from "./core.js";
 import { useStore } from "./store.jsx";
-import { useUI, Modal, Icon, PriorityTag, StatusTag, ProjectTag, SpaceTag, Tags, ConfirmModal } from "./ui.jsx";
+import { useUI, Modal, Icon, PriorityTag, StatusTag, ProjectTag, SpaceTag, Tags, ConfirmModal, ProjectAvatar } from "./ui.jsx";
 import { TaskForm, EventForm, NoteForm, ProjectForm, SpaceForm } from "./forms.jsx";
 
-const { useState } = React;
+const { useState, useMemo, useEffect, useRef } = React;
 
 export function renderModal(m, top) {
   switch (m.type) {
@@ -18,6 +18,7 @@ export function renderModal(m, top) {
     case "form": return <FormModal m={m} top={top} />;
     case "new": return <NewMenu m={m} top={top} />;
     case "export": return <ExportModal m={m} top={top} />;
+    case "search": return <SearchModal m={m} top={top} />;
     default: return null;
   }
 }
@@ -248,6 +249,74 @@ function ExportModal({ m, top }) {
       footer={<><button className="btn btn-ghost" onClick={() => close(m.mid)}>Zatvori</button><button className="btn btn-primary" onClick={copy} data-autofocus><Icon n="copy" s={16} />Kopiraj JSON</button></>}>
       <p className="muted">Preuzimanje fajla nije dostupno u ovom prikazu. Kopiraj tekst ispod i sačuvaj ga kao <span className="mono">moj-os.json</span>.</p>
       <textarea id="export-json" className="input mono export-ta" readOnly value={m.json} rows={12} />
+    </Modal>
+  );
+}
+
+// ---------- Pretraga (⌘K) ----------
+const norm = (x) => (x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "dj");
+function SearchModal({ m, top }) {
+  const { data } = useStore();
+  const { close, replace, navigate } = useUI();
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(0);
+  const listRef = useRef(null);
+  const results = useMemo(() => {
+    const t = norm(q.trim());
+    const hit = (s) => !t || norm(s).includes(t);
+    const out = [];
+    const projects = Object.values(data.projects).filter((p) => hit(`${p.name} ${p.description}`)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const tasks = Object.values(data.tasks).filter((x) => hit(`${x.title} ${x.description} ${(x.tags || []).join(" ")}`)).sort((a, b) => (a.status === "done") - (b.status === "done") || b.updatedAt.localeCompare(a.updatedAt));
+    const events = Object.values(data.events).filter((e) => hit(`${e.title} ${e.description} ${e.location}`)).sort((a, b) => b.startDate.localeCompare(a.startDate));
+    const notes = Object.values(data.notes).filter((n) => hit(`${n.title} ${htmlToText(n.body)}`)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const lim = t ? 8 : 4;
+    if (projects.length) out.push({ group: "Projekti", items: projects.slice(0, lim).map((p) => ({ key: p.id, kind: "project", id: p.id, title: p.name, sub: data.spaces[p.spaceId]?.name || "", p })) });
+    if (tasks.length) out.push({ group: "Zadaci", items: tasks.slice(0, lim).map((x) => ({ key: x.id, kind: "task", id: x.id, title: x.title, sub: [statusLabel(x.status), x.dueDate && `rok ${fmtRel(x.dueDate)}`, data.projects[x.projectId]?.name].filter(Boolean).join(" · "), done: x.status === "done" })) });
+    if (events.length) out.push({ group: "Događaji", items: events.slice(0, lim).map((e) => ({ key: e.id, kind: "event", id: e.id, title: e.title, sub: `${fmtRel(e.startDate)}${!e.allDay && e.startTime ? ` · ${e.startTime}` : ""}` })) });
+    if (notes.length) out.push({ group: "Beleške", items: notes.slice(0, lim).map((n) => ({ key: n.id, kind: "note", id: n.id, title: noteTitle(n), sub: data.projects[n.projectId]?.name || "" })) });
+    return out;
+  }, [data, q]);
+  const flat = results.flatMap((g) => g.items);
+  useEffect(() => setSel(0), [q]);
+  useEffect(() => { listRef.current?.querySelector(".sr-item.on")?.scrollIntoView({ block: "nearest" }); }, [sel]);
+  const go = (it) => {
+    if (!it) return;
+    if (it.kind === "project") { close(m.mid); navigate(`projekat-${it.id}`); }
+    else replace(m.mid, { type: "view", kind: it.kind, id: it.id });
+  };
+  const icon = { task: "task", event: "calendar", note: "note" };
+  let idx = -1;
+  return (
+    <Modal title={null} onClose={() => close(m.mid)} top={top} size="md" className="search-modal">
+      <div className="sr-box">
+        <Icon n="search" s={20} />
+        <input id="global-search" className="sr-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pretraži zadatke, projekte, događaje i beleške" data-autofocus autoComplete="off"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(s + 1, flat.length - 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); }
+            else if (e.key === "Enter") { e.preventDefault(); go(flat[sel]); }
+          }} />
+        <kbd>Esc</kbd>
+      </div>
+      <div className="sr-list" ref={listRef} role="listbox" aria-label="Rezultati">
+        {!flat.length && <div className="sr-empty">Nema rezultata za „{q}“.</div>}
+        {results.map((g) => (
+          <div key={g.group} className="sr-group">
+            <div className="sr-group-h">{q.trim() ? g.group : `Nedavno · ${g.group}`}</div>
+            {g.items.map((it) => {
+              idx++;
+              const i = idx;
+              return (
+                <button key={it.key} role="option" aria-selected={sel === i} className={`sr-item ${sel === i ? "on" : ""} ${it.done ? "is-done" : ""}`} onMouseEnter={() => setSel(i)} onClick={() => go(it)}>
+                  {it.kind === "project" ? <ProjectAvatar p={it.p} size="sm" /> : <span className={`sr-ic sr-${it.kind}`}><Icon n={icon[it.kind]} s={16} /></span>}
+                  <span className="sr-t"><b>{it.title}</b>{it.sub && <small>{it.sub}</small>}</span>
+                  <Icon n="arrowRight" s={15} className="sr-go" />
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </Modal>
   );
 }

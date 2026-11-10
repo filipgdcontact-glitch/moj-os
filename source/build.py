@@ -1,14 +1,14 @@
 import subprocess, pathlib
-light = """--bg: #f4f5f8; --surface: #ffffff; --surface-2: #f3f5f8; --surface-3: #e9ecf2;
-  --line: #e2e6ed; --line-2: #d2d8e2; --text: #141924; --text-2: #4a5367; --muted: #6b7489;
-  --accent: #a96b10; --accent-ink: #ffffff; --accent-soft: rgba(169,107,16,.11); --accent-line: rgba(169,107,16,.45);
-  --ev: #2f72c4; --wk: #138891; --dl: #c84846; --ok: #23955d; --danger: #c84846; --hi: #c4651f; --violet: #7a5cc9;
-  --shadow: 0 1px 2px rgba(20,25,36,.06), 0 6px 18px rgba(20,25,36,.06); --shadow-lg: 0 18px 50px rgba(20,25,36,.18);
-  --overlay: rgba(20,25,36,.35); --toast-act: #f0bf6a; color-scheme: light;"""
-blocks = f""":root[data-app-theme="light"] {{ {light} }}
-@media (prefers-color-scheme: light) {{ :root[data-app-theme="system"]:not([data-theme="dark"]) {{ {light} }} }}
-:root[data-app-theme="system"][data-theme="light"] {{ {light} }}"""
-css = pathlib.Path("src/style.css").read_text().replace("%%LIGHT_BLOCKS%%", blocks)
+dark = """--bg: #111113; --side: #161618; --surface: #19191c; --surface-2: #1f1f23; --surface-3: #28282d;
+  --line: #26262b; --line-2: #34343b; --text: #f4f4f5; --text-2: #b4b4bc; --muted: #7c7c86;
+  --primary: #f4f4f5; --primary-ink: #18181b; --accent: #8f80ff; --accent-ink: #ffffff; --accent-soft: rgba(143,128,255,.14); --accent-line: rgba(143,128,255,.45);
+  --ev: #6aa1ff; --wk: #a593ff; --dl: #ff7b7b; --ok: #4cc77f; --danger: #ff7b7b; --hi: #f2a93b; --violet: #a593ff;
+  --shadow: 0 1px 2px rgba(0,0,0,.4); --shadow-md: 0 4px 14px rgba(0,0,0,.35); --shadow-lg: 0 24px 60px rgba(0,0,0,.55);
+  --overlay: rgba(0,0,0,.55); --toast-bg: #f4f4f5; --toast-fg: #18181b; --toast-act: #6d5bf6; color-scheme: dark;"""
+blocks = f""":root[data-app-theme="dark"] {{ {dark} }}
+@media (prefers-color-scheme: dark) {{ :root[data-app-theme="system"]:not([data-theme="light"]) {{ {dark} }} }}
+:root[data-app-theme="system"][data-theme="dark"] {{ {dark} }}"""
+css = pathlib.Path("src/style.css").read_text().replace("%%THEME_BLOCKS%%", blocks)
 subprocess.run(["npx","esbuild","src/app.jsx","--bundle","--format=iife","--target=es2019","--minify","--jsx-factory=React.createElement","--jsx-fragment=React.Fragment","--outfile=dist/app.js","--log-level=warning"],check=True)
 js = pathlib.Path("dist/app.js").read_text().replace("</script","<\\/script")
 html = f"""<title>Moj OS</title>
@@ -16,7 +16,7 @@ html = f"""<title>Moj OS</title>
 <meta name="description" content="Lični operativni sistem za obaveze, vreme, projekte i beleške.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <style>
 {css}
 </style>
@@ -76,7 +76,7 @@ index = f"""<!doctype html>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="app.css?v={ver}">
 <style>:root{{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}body{{margin:0}}img{{max-width:100%}}[hidden]{{display:none!important}}</style>
 </head>

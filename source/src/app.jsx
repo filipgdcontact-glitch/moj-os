@@ -2,18 +2,19 @@
 // Moj OS — okvir aplikacije i navigacija
 // ============================================================
 import { StoreProvider, useStore } from "./store.jsx";
-import { UIProvider, useUI, Icon, Modal } from "./ui.jsx";
+import { UIProvider, useUI, Icon, Modal, ProjectAvatar } from "./ui.jsx";
 import { renderModal } from "./views.jsx";
 import { TodayPage, PlannerPage, TasksPage, ProjectsPage, ProjectPage, NotesPage, SettingsPage } from "./pages.jsx";
 import { prefs } from "./storage.js";
 import { AuthGate, useAuth } from "./auth.jsx";
 
-document.documentElement.setAttribute("data-app-theme", prefs.get("theme", "dark"));
+document.documentElement.setAttribute("data-app-theme", prefs.get("theme", "light"));
 
 const { useEffect, useState } = React;
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 const NAV = [
-  { r: "dan", l: "Moj dan", i: "sun" },
+  { r: "dan", l: "Moj dan", i: "home" },
   { r: "planer", l: "Planer", i: "calendar" },
   { r: "zadaci", l: "Zadaci", i: "checks" },
   { r: "projekti", l: "Projekti", i: "folder" },
@@ -55,20 +56,30 @@ function SyncBadge({ compact }) {
 }
 
 function Shell() {
-  const { data, ready, syncState } = useStore();
+  const { data, ready, syncState, actions } = useStore();
   const { route, navigate, open } = useUI();
   const [collapsed, setCollapsed] = useState(() => prefs.get("collapsed", false));
-  const theme = data.settings?.theme || "dark";
+  const theme = data.settings?.theme || "light";
+  // Redizajn 2: jednom prebaci na svetlu temu (kasnije se bira u Podešavanjima)
+  useEffect(() => {
+    if (ready && data.settings && data.settings.design !== 2) actions.updateSettings({ design: 2, theme: "light" });
+  }, [ready, data.settings, actions]);
   useEffect(() => { document.documentElement.setAttribute("data-app-theme", theme); prefs.set("theme", theme); }, [theme]);
   useEffect(() => prefs.set("collapsed", collapsed), [collapsed]);
   useEffect(() => {
     const on = (e) => {
-      if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (!document.querySelector(".search-modal")) open({ type: "search" });
+        return;
+      }
+      const isSlash = e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if ((e.key.toLowerCase() !== "n" && !isSlash) || e.metaKey || e.ctrlKey || e.altKey) return;
       const el = document.activeElement;
       if (el && (el.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(el.tagName))) return;
       if (document.querySelector(".overlay")) return;
       e.preventDefault();
-      open({ type: "new" });
+      open({ type: isSlash ? "search" : "new" });
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
@@ -86,10 +97,15 @@ function Shell() {
       <aside className="sidebar" aria-label="Glavna navigacija">
         <div className="brand">
           <span className="brand-logo" aria-hidden="true" />
-          <span className="brand-name">Moj OS</span>
+          <span className="brand-text"><span className="brand-name">Moj OS</span><span className="brand-sub">Lični radni prostor</span></span>
           <button className="icon-btn collapse-btn" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Proširi meni" : "Skupi meni"} title={collapsed ? "Proširi meni" : "Skupi meni"}><Icon n="sidebar" /></button>
         </div>
+        <button className="side-search" onClick={() => open({ type: "search" })} disabled={!ready} title="Pretraga">
+          <Icon n="search" s={18} /><span className="side-search-l">Pretraga</span>
+          <span className="side-search-k"><kbd>{IS_MAC ? "⌘K" : "Ctrl K"}</kbd><kbd>/</kbd></span>
+        </button>
         <button className="btn btn-primary new-btn" onClick={() => open({ type: "new" })} disabled={!ready} title="Novo (N)"><Icon n="plus" s={17} /><span>Novo</span></button>
+        <div className="side-label">Glavni meni</div>
         <nav className="nav">
           {NAV.map((n) => (
             <a key={n.r} href={`#${n.r}`} className={`nav-item ${active === n.r ? "is-active" : ""}`} aria-current={active === n.r ? "page" : undefined}
@@ -98,6 +114,7 @@ function Shell() {
             </a>
           ))}
         </nav>
+        <SideProjects collapsed={collapsed} />
         <div className="sidebar-foot"><SyncBadge compact={collapsed} /></div>
       </aside>
 
@@ -105,6 +122,7 @@ function Shell() {
         <header className="topbar">
           <span className="brand-logo sm" aria-hidden="true" />
           <span className="topbar-title">{title}</span>
+          <button className="icon-btn" onClick={() => open({ type: "search" })} aria-label="Pretraga"><Icon n="search" /></button>
           <SyncBadge compact />
         </header>
         <main className="page" id="main">{page}</main>
@@ -118,6 +136,26 @@ function Shell() {
           <Icon n="menu" s={21} /><span>{!MOBILE_MAIN.includes(active) ? title : "Više"}</span>
         </button>
       </nav>
+    </div>
+  );
+}
+
+function SideProjects({ collapsed }) {
+  const { data } = useStore();
+  const { route, navigate, open } = useUI();
+  const list = Object.values(data.projects).filter((p) => p.status === "active").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 7);
+  return (
+    <div className="side-projects">
+      <div className="side-label side-label-row">
+        <span>Projekti</span>
+        <button className="icon-btn xs" onClick={() => open({ type: "form", kind: "project" })} aria-label="Novi projekat" title="Novi projekat"><Icon n="plus" s={15} /></button>
+      </div>
+      {list.length ? list.map((p) => (
+        <a key={p.id} href={`#projekat-${p.id}`} className={`nav-item nav-proj ${route.page === "projekat" && route.id === p.id ? "is-active" : ""}`}
+          onClick={(e) => { e.preventDefault(); navigate(`projekat-${p.id}`); }} title={collapsed ? p.name : undefined}>
+          <ProjectAvatar p={p} size="sm" /><span>{p.name}</span>
+        </a>
+      )) : !collapsed && <div className="side-empty">Nema aktivnih projekata</div>}
     </div>
   );
 }

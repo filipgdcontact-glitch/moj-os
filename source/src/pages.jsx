@@ -10,7 +10,7 @@ import {
 import { useStore } from "./store.jsx";
 import { prefs } from "./storage.js";
 import { useAuth } from "./auth.jsx";
-import { useUI, Icon, PriorityTag, StatusTag, TypeTag, TypeMark, ProjectTag, SpaceTag, Tags, Check, Empty, Segmented } from "./ui.jsx";
+import { useUI, Icon, PriorityTag, StatusTag, TypeTag, TypeMark, ProjectTag, SpaceTag, Tags, Check, Empty, Segmented, ProjectAvatar } from "./ui.jsx";
 
 const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
@@ -138,12 +138,12 @@ function WeekChip({ e, hideProject }) {
   return (
     <button className={`chip chip-${e.type} ${done ? "is-done" : ""}`} onClick={() => o.view(viewKind(e.type), e.id, e.date)}
       title={`${ENTRY_TYPE[e.type]}: ${e.title}`} style={p ? { "--pc": p.color } : undefined}>
+      <span className="chip-title">{e.title}</span>
       <span className="chip-top">
         <TypeMark type={e.type} />
         {time ? <span className="mono chip-time">{e.type === "deadline" ? `do ${time}` : time}</span> : <span className="chip-kind">{e.type === "event" && e.allDay ? "Ceo dan" : ENTRY_TYPE[e.type]}</span>}
         {(e.priority === "high" || e.priority === "urgent") && !done && <span className={`pmark prio-${e.priority}`} aria-label={e.priority === "urgent" ? "Hitno" : "Visok prioritet"} />}
       </span>
-      <span className="chip-title">{e.title}</span>
       {p && !hideProject && <span className="chip-proj"><span className="pdot" />{p.name}</span>}
     </button>
   );
@@ -201,6 +201,21 @@ function QuickCapture() {
 }
 
 // ---------- MOJ DAN ----------
+const plural = (n, one, few, many) => {
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return one;
+  if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few;
+  return many;
+};
+function daySummary(entries) {
+  const tasks = entries.filter((e) => e.type !== "event" && e.status !== "done").length;
+  const events = entries.filter((e) => e.type === "event").length;
+  if (!tasks && !events) return "Danas nemaš zakazanih obaveza.";
+  const parts = [];
+  if (tasks) parts.push(`${tasks} ${plural(tasks, "otvoren zadatak", "otvorena zadatka", "otvorenih zadataka")}`);
+  if (events) parts.push(`${events} ${plural(events, "događaj", "događaja", "događaja")}`);
+  return `Danas imaš ${parts.join(" i ")}.`;
+}
 export function TodayPage() {
   const { data } = useStore();
   const o = useOpen();
@@ -214,10 +229,11 @@ export function TodayPage() {
   const open = entries.filter((e) => e.status !== "done").length;
   return (
     <div className="page-today">
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">{fmtFull(t)}</div>
-          <h1 className="h1">Moj dan</h1>
+      <div className="page-head day-head">
+        <span className="head-ic" aria-hidden="true"><Icon n="calendar" s={22} /></span>
+        <div className="day-head-t">
+          <h1 className="h1">{fmtFull(t).replace(/\.$/, "")}</h1>
+          <p className="page-sub">{daySummary(entries)}</p>
         </div>
       </div>
       <div className="today-grid">
@@ -549,12 +565,13 @@ function Kanban({ tasks }) {
                   <div key={x.id} className={`kcard ${x.status === "done" ? "is-done" : ""}`} draggable role="button" tabIndex={0}
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", x.id); e.dataTransfer.effectAllowed = "move"; }}
                     onClick={() => o.view("task", x.id)} onKeyDown={(e) => { if (e.key === "Enter") o.view("task", x.id); }}>
+                    {x.priority !== "normal" && <div><PriorityTag v={x.priority} /></div>}
                     <div className="kcard-title">{x.title}</div>
                     <div className="entry-meta">
-                      {x.dueDate && <span className={`meta ${x.status !== "done" && x.dueDate < today() ? "is-late" : ""}`}><Icon n="flag" s={12} />{fmtRel(x.dueDate)}</span>}
-                      {x.workDate && <span className="meta"><Icon n="clock" s={12} />{fmtRel(x.workDate)}</span>}
-                      <PriorityTag v={x.priority} />
+                      {x.dueDate && <span className={`meta ${x.status !== "done" && x.dueDate < today() ? "is-late" : ""}`}><Icon n="calendar" s={13} />{fmtRel(x.dueDate)}</span>}
+                      {x.workDate && <span className="meta"><Icon n="clock" s={13} />{fmtRel(x.workDate)}</span>}
                     </div>
+                    {x.tags?.length > 0 && <div className="kcard-tags">{x.tags.map((t) => <span key={t} className="pill">{t}</span>)}</div>}
                     {x.projectId && <div className="kcard-foot"><ProjectTag id={x.projectId} /></div>}
                   </div>
                 ))}
@@ -625,7 +642,7 @@ function ProjectCard({ p, onOpen }) {
   const nn = Object.values(data.notes).filter((n) => n.projectId === p.id).length;
   return (
     <button className="pcard" onClick={onOpen} style={{ "--pc": p.color }}>
-      <div className="pcard-top"><span className="pswatch" /><span className="pcard-name">{p.name}</span>{p.status !== "active" && <span className="tag">{projStatusLabel(p.status)}</span>}</div>
+      <div className="pcard-top"><ProjectAvatar p={p} /><span className="pcard-name">{p.name}</span>{p.status !== "active" && <span className="tag">{projStatusLabel(p.status)}</span>}</div>
       {p.description && <div className="pcard-desc">{p.description}</div>}
       <div className="progress" aria-label={`Napredak ${pr.pct}%`}><span style={{ width: `${pr.pct}%` }} /></div>
       <div className="pcard-meta">
@@ -670,7 +687,7 @@ export function ProjectPage({ id }) {
       <div className="page-head proj-head">
         <div className="proj-title">
           <div className="eyebrow"><SpaceTag id={p.spaceId} /><span className="tag">{projStatusLabel(p.status)}</span></div>
-          <h1 className="h1"><span className="pswatch lg" />{p.name}</h1>
+          <h1 className="h1"><ProjectAvatar p={p} size="lg" />{p.name}</h1>
         </div>
         <div className="head-acts">
           <button className="btn btn-primary" onClick={edit}><Icon n="edit" s={16} />Uredi</button>
@@ -820,7 +837,7 @@ export function SettingsPage() {
   const { data, mode, actions, getData, syncState } = useStore();
   const { toast, confirm, open } = useUI();
   const auth = useAuth();
-  const theme = data.settings?.theme || "dark";
+  const theme = data.settings?.theme || "light";
   const demoCount = COLLECTIONS.reduce((n, c) => n + Object.values(data[c]).filter((r) => r.demo).length, 0);
   const counts = { spaces: "prostora", projects: "projekata", tasks: "zadataka", events: "događaja", notes: "beleški" };
   const [paste, setPaste] = useState("");
