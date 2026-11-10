@@ -54,15 +54,36 @@ function Splash() {
   return <div className="auth-wrap"><div className="auth-card auth-splash"><span className="brand-logo big" aria-hidden="true" /><p className="field-hint">Učitavanje…</p></div></div>;
 }
 
+/** Greška koju Supabase vraća u adresi posle klika na link iz e-maila. */
+function readLinkError() {
+  const raw = (location.hash || "").replace(/^#/, "") + "&" + (location.search || "").replace(/^\?/, "");
+  const q = new URLSearchParams(raw);
+  const code = q.get("error_code") || q.get("error");
+  if (!code) return null;
+  try { history.replaceState(null, "", location.pathname); } catch {}
+  if (code === "otp_expired") return "Link iz e-maila je istekao ili je već iskorišćen. Pošalji novi link ispod.";
+  return (q.get("error_description") || "Link iz e-maila nije važeći.").replace(/\+/g, " ");
+}
+
 function Login({ sb, onLocal }) {
   const [mode, setMode] = useState("in"); // in | up | reset
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
+  const [err, setErr] = useState(() => readLinkError());
+  const [canResend, setCanResend] = useState(() => !!err);
   const [info, setInfo] = useState(null);
   const redirect = location.origin + location.pathname;
+  const resend = async () => {
+    const em = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return setErr("Upiši e-mail adresu na koju treba poslati novi link.");
+    setBusy(true); setErr(null);
+    const { error } = await sb.auth.resend({ type: "signup", email: em, options: { emailRedirectTo: redirect } });
+    setBusy(false);
+    if (error) setErr(authError(error));
+    else { setInfo(`Poslali smo novi link za potvrdu na ${em}. Otvori najnoviju poruku.`); setCanResend(false); }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -92,6 +113,7 @@ function Login({ sb, onLocal }) {
       }
     } catch (x) {
       setErr(authError(x));
+      if (/not confirmed/i.test(x?.message || "")) setCanResend(true);
     } finally {
       setBusy(false);
     }
@@ -117,6 +139,7 @@ function Login({ sb, onLocal }) {
           <input id="auth-pw2" className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>}
         {err && <div className="field-err" role="alert">{err}</div>}
         <button className="btn btn-primary auth-submit" disabled={busy}>{busy ? "Sačekaj…" : mode === "in" ? "Prijavi se" : mode === "up" ? "Napravi nalog" : "Pošalji link"}</button>
+        {canResend && mode !== "reset" && <button type="button" className="btn auth-submit" disabled={busy} onClick={resend}>Pošalji ponovo link za potvrdu</button>}
         <div className="auth-links">
           {mode === "in" && <button type="button" className="link" onClick={() => { setMode("reset"); setErr(null); setInfo(null); }}>Zaboravljena lozinka?</button>}
           {mode === "reset" && <button type="button" className="link" onClick={() => { setMode("in"); setErr(null); }}>Nazad na prijavu</button>}
