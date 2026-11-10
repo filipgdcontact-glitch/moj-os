@@ -102,6 +102,14 @@ kbd { font-family: var(--f-ui); font-size: 11.5px; font-weight: 500; color: var(
 .sync.busy { color: var(--accent); }
 .sync.warn { color: var(--hi); }
 
+.theme-toggle { position: relative; flex: none; width: 46px; height: 26px; border-radius: 999px; background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line-2); transition: background .2s; }
+.theme-toggle:hover { background: color-mix(in srgb, var(--surface-3) 70%, var(--line-2)); }
+.tt-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--hi); box-shadow: 0 1px 3px rgba(0,0,0,.18); transition: transform .2s ease; }
+.theme-toggle.is-dark { background: color-mix(in srgb, var(--accent) 30%, var(--surface-3)); }
+.theme-toggle.is-dark .tt-knob { transform: translateX(20px); color: var(--accent); background: var(--surface-3); }
+.topbar .theme-toggle { margin-left: 2px; }
+@media (min-width: 900px) { .is-collapsed .brand .theme-toggle { order: 1; } }
+
 /* ---------- Tipografija ---------- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .h1 { font-size: 26px; line-height: 1.2; font-weight: 650; margin: 0; letter-spacing: -.025em; text-wrap: balance; display: flex; align-items: center; gap: 12px; }

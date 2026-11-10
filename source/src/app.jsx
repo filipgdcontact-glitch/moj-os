@@ -97,7 +97,8 @@ function Shell() {
       <aside className="sidebar" aria-label="Glavna navigacija">
         <div className="brand">
           <span className="brand-logo" aria-hidden="true" />
-          <span className="brand-text"><span className="brand-name">Moj OS</span><span className="brand-sub">Lični radni prostor</span></span>
+          <span className="brand-text"><span className="brand-name">Moj OS</span><span className="brand-sub">Lični prostor</span></span>
+          <ThemeToggle />
           <button className="icon-btn collapse-btn" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Proširi meni" : "Skupi meni"} title={collapsed ? "Proširi meni" : "Skupi meni"}><Icon n="sidebar" /></button>
         </div>
         <button className="side-search" onClick={() => open({ type: "search" })} disabled={!ready} title="Pretraga">
@@ -121,6 +122,7 @@ function Shell() {
       <div className="main">
         <header className="topbar">
           <span className="brand-logo sm" aria-hidden="true" />
+          <ThemeToggle />
           <span className="topbar-title">{title}</span>
           <button className="icon-btn" onClick={() => open({ type: "search" })} aria-label="Pretraga"><Icon n="search" /></button>
           <SyncBadge compact />
@@ -137,6 +139,20 @@ function Shell() {
         </button>
       </nav>
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { data, actions } = useStore();
+  const theme = data.settings?.theme || "light";
+  const sysDark = () => window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  const dark = theme === "dark" || (theme === "system" && sysDark());
+  const label = dark ? "Uključi svetlu temu" : "Uključi tamnu temu";
+  return (
+    <button className={`theme-toggle ${dark ? "is-dark" : ""}`} role="switch" aria-checked={dark} aria-label={label} title={label}
+      onClick={() => actions.updateSettings({ theme: dark ? "light" : "dark" })}>
+      <span className="tt-knob"><Icon n={dark ? "moon" : "sun"} s={13} /></span>
+    </button>
   );
 }
 
