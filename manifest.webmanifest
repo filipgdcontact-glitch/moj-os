@@ -1,0 +1,31 @@
+{
+  "name": "Moj OS",
+  "short_name": "Moj OS",
+  "lang": "sr-Latn",
+  "description": "Lični operativni sistem za obaveze, vreme, projekte i beleške.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#111723",
+  "icons": [
+    {
+      "src": "icons/home-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/home-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/home-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
