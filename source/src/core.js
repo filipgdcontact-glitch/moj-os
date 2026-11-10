@@ -362,24 +362,27 @@ export const normalizeImport = (json) => {
 export const demoData = () => {
   const t = today();
   const d = emptyData();
+  // stalni ID-jevi: demo upisan sa dva uređaja istovremeno pravi iste redove, ne duplikate
+  let n = 0;
+  const did = (p) => `demo-${p}-${++n}`;
   const put = (r) => (d[KINDS[r.kind]][r.id] = { ...r, demo: true });
-  const sWork = makeSpace({ name: "Posao", color: COLORS[1] });
-  const sHome = makeSpace({ name: "Privatno", color: COLORS[2] });
+  const sWork = makeSpace({ id: did("s"),  name: "Posao", color: COLORS[1] });
+  const sHome = makeSpace({ id: did("s"),  name: "Privatno", color: COLORS[2] });
   [sWork, sHome].forEach(put);
-  const pPlan = makeProject({ name: "Plan za kvartal", description: "Primer projekta: ciljevi, izveštaj i sastanci za tekući kvartal.", spaceId: sWork.id, color: COLORS[0], startDate: addDays(t, -7), dueDate: addDays(t, 30) });
-  const pHome = makeProject({ name: "Sređivanje stana", description: "Primer projekta: sitni kućni poslovi i nabavka.", spaceId: sHome.id, color: COLORS[2], startDate: addDays(t, -3) });
+  const pPlan = makeProject({ id: did("p"),  name: "Plan za kvartal", description: "Primer projekta: ciljevi, izveštaj i sastanci za tekući kvartal.", spaceId: sWork.id, color: COLORS[0], startDate: addDays(t, -7), dueDate: addDays(t, 30) });
+  const pHome = makeProject({ id: did("p"),  name: "Sređivanje stana", description: "Primer projekta: sitni kućni poslovi i nabavka.", spaceId: sHome.id, color: COLORS[2], startDate: addDays(t, -3) });
   [pPlan, pHome].forEach(put);
   [
-    makeTask({ title: "Pregledati nedeljne prioritete", description: "Proći kroz otvorene zadatke i izabrati tri najvažnija za ovu nedelju.", status: "doing", priority: "high", projectId: pPlan.id, spaceId: sWork.id, workDate: t, workTime: "09:00", duration: 30, tags: ["planiranje"] }),
-    makeTask({ title: "Napisati kratak izveštaj", priority: "normal", projectId: pPlan.id, spaceId: sWork.id, dueDate: addDays(t, 2), dueTime: "16:00", workDate: addDays(t, 1), workTime: "13:00", duration: 90, tags: ["pisanje"] }),
-    makeTask({ title: "Odgovoriti na otvorene poruke", status: "waiting", priority: "low", spaceId: sWork.id, dueDate: addDays(t, 3) }),
-    makeTask({ title: "Izmeriti prostor za policu", priority: "urgent", projectId: pHome.id, spaceId: sHome.id, dueDate: t, dueTime: "19:00" }),
-    makeTask({ title: "Šetnja 30 minuta", priority: "normal", spaceId: sHome.id, workDate: t, workTime: "18:00", duration: 30, recurrence: "every2", tags: ["zdravlje"] }),
-    makeTask({ title: "Napraviti listu za nabavku", status: "done", completedAt: nowISO(), projectId: pHome.id, spaceId: sHome.id, workDate: addDays(t, -1) }),
+    makeTask({ id: did("t"),  title: "Pregledati nedeljne prioritete", description: "Proći kroz otvorene zadatke i izabrati tri najvažnija za ovu nedelju.", status: "doing", priority: "high", projectId: pPlan.id, spaceId: sWork.id, workDate: t, workTime: "09:00", duration: 30, tags: ["planiranje"] }),
+    makeTask({ id: did("t"),  title: "Napisati kratak izveštaj", priority: "normal", projectId: pPlan.id, spaceId: sWork.id, dueDate: addDays(t, 2), dueTime: "16:00", workDate: addDays(t, 1), workTime: "13:00", duration: 90, tags: ["pisanje"] }),
+    makeTask({ id: did("t"),  title: "Odgovoriti na otvorene poruke", status: "waiting", priority: "low", spaceId: sWork.id, dueDate: addDays(t, 3) }),
+    makeTask({ id: did("t"),  title: "Izmeriti prostor za policu", priority: "urgent", projectId: pHome.id, spaceId: sHome.id, dueDate: t, dueTime: "19:00" }),
+    makeTask({ id: did("t"),  title: "Šetnja 30 minuta", priority: "normal", spaceId: sHome.id, workDate: t, workTime: "18:00", duration: 30, recurrence: "every2", tags: ["zdravlje"] }),
+    makeTask({ id: did("t"),  title: "Napraviti listu za nabavku", status: "done", completedAt: nowISO(), projectId: pHome.id, spaceId: sHome.id, workDate: addDays(t, -1) }),
   ].forEach(put);
-  put(makeEvent({ title: "Sastanak tima", description: "Kratak pregled napretka i plan za narednu nedelju.", startDate: t, startTime: "11:00", endTime: "12:00", location: "Online", projectId: pPlan.id, tags: ["sastanak"] }));
-  put(makeNote({ title: "Ideje za bolji radni ritam", body: "<h3>Šta probati</h3><ul><li>Najteži zadatak ujutru</li><li>Kratka pauza na svakih 90 minuta</li><li>Petkom pregled nedelje</li></ul><p>Detaljnije: <a href=\"https://en.wikipedia.org/wiki/Time_management\">time management</a></p>", pinned: true, tags: ["navike"] }));
-  put(makeNote({ title: "", body: "<p>Proveriti da li polica staje pored prozora.</p>", projectId: pHome.id }));
+  put(makeEvent({ id: did("e"),  title: "Sastanak tima", description: "Kratak pregled napretka i plan za narednu nedelju.", startDate: t, startTime: "11:00", endTime: "12:00", location: "Online", projectId: pPlan.id, tags: ["sastanak"] }));
+  put(makeNote({ id: did("n"),  title: "Ideje za bolji radni ritam", body: "<h3>Šta probati</h3><ul><li>Najteži zadatak ujutru</li><li>Kratka pauza na svakih 90 minuta</li><li>Petkom pregled nedelje</li></ul><p>Detaljnije: <a href=\"https://en.wikipedia.org/wiki/Time_management\">time management</a></p>", pinned: true, tags: ["navike"] }));
+  put(makeNote({ id: did("n"),  title: "", body: "<p>Proveriti da li polica staje pored prozora.</p>", projectId: pHome.id }));
   d.settings = makeSettings({ demoLoaded: true });
   return d;
 };

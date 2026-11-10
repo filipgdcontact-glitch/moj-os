@@ -106,7 +106,7 @@ export function StoreProvider({ children, makeAdapter }) {
           if (!def || decided) return;
           if (!s) {
             // Prvo pokretanje na ovom skladištu: prenesi lokalne podatke ili ubaci demo.
-            const start = cache && hasRecords(cache) && adapter.mode !== "local" ? { ...cache, settings: makeSettings({ ...(cache.settings || {}), id: "settings" }) } : demoData();
+            const start = cache && adapter.mode !== "local" && COLLECTIONS.some((c) => Object.values(cache[c]).some((r) => !r.demo)) ? { ...cache, settings: makeSettings({ ...(cache.settings || {}), id: "settings" }) } : demoData();
             const empty = emptyData();
             dataRef.current = empty;
             commit(start);
