@@ -1,6 +1,6 @@
 // Moj OS — rad bez interneta. Verzija keša se menja sa svakim build-om.
-const CACHE = "mojos-193de7ee17";
-const SHELL = ["./", "index.html", "app.css?v=193de7ee17", "app.js?v=193de7ee17", "vendor/react.production.min.js", "vendor/react-dom.production.min.js", "manifest.webmanifest", "icons/favicon-32.png", "icons/favicon-64.png", "icons/home-180.png", "icons/home-192.png", "icons/home-512.png"];
+const CACHE = "mojos-d9b7ab6866";
+const SHELL = ["./", "index.html", "app.css?v=d9b7ab6866", "app.js?v=d9b7ab6866", "vendor/react.production.min.js", "vendor/react-dom.production.min.js", "vendor/supabase.js", "config.js?v=d9b7ab6866", "manifest.webmanifest", "icons/favicon-32.png", "icons/favicon-64.png", "icons/home-180.png", "icons/home-192.png", "icons/home-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("mojos-") && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

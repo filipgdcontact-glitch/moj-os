@@ -46,6 +46,15 @@ for n in (32, 64): shutil.copy(f"assets/icon-{n}.png", site / "icons" / f"favico
 for n in (180, 192, 512): shutil.copy(f"assets/home-{n}.png", site / "icons" / f"home-{n}.png")
 shutil.copy("node_modules/react/umd/react.production.min.js", site / "vendor/react.production.min.js")
 shutil.copy("node_modules/react-dom/umd/react-dom.production.min.js", site / "vendor/react-dom.production.min.js")
+shutil.copy("node_modules/@supabase/supabase-js/dist/umd/supabase.js", site / "vendor/supabase.js")
+(site / "config.js").write_text("""// Moj OS — podešavanja povezivanja.
+// Publishable (anon) ključ je namenjen pregledaču; podatke štite RLS pravila u bazi (supabase/schema.sql).
+window.MOJOS_CONFIG = {
+  supabaseUrl: "https://vbdybjhjyqwgocnseoro.supabase.co",
+  supabaseKey: "sb_publishable_na_PzTYm4V6pf-49Joi6mQ_m0lM8QCE",
+};
+""")
+shutil.copytree("supabase", site / "supabase")
 (site / "app.js").write_text(pathlib.Path("dist/app.js").read_text())
 (site / "app.css").write_text(':root { --logo: url("icons/favicon-64.png"); }\n' + css)
 ver = hashlib.sha1((css + js).encode()).hexdigest()[:10]
@@ -76,6 +85,8 @@ index = f"""<!doctype html>
 <script>window.MOJOS_STANDALONE = true;</script>
 <script src="vendor/react.production.min.js"></script>
 <script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="config.js?v={ver}"></script>
 <script src="app.js?v={ver}"></script>
 </body>
 </html>
@@ -92,7 +103,7 @@ index = f"""<!doctype html>
     {"src": "icons/home-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ]
 }, ensure_ascii=False, indent=2))
-shell = ["./", "index.html", f"app.css?v={ver}", f"app.js?v={ver}", "vendor/react.production.min.js", "vendor/react-dom.production.min.js", "manifest.webmanifest", "icons/favicon-32.png", "icons/favicon-64.png", "icons/home-180.png", "icons/home-192.png", "icons/home-512.png"]
+shell = ["./", "index.html", f"app.css?v={ver}", f"app.js?v={ver}", "vendor/react.production.min.js", "vendor/react-dom.production.min.js", "vendor/supabase.js", f"config.js?v={ver}", "manifest.webmanifest", "icons/favicon-32.png", "icons/favicon-64.png", "icons/home-180.png", "icons/home-192.png", "icons/home-512.png"]
 (site / "sw.js").write_text(f"""// Moj OS — rad bez interneta. Verzija keša se menja sa svakim build-om.
 const CACHE = "mojos-{ver}";
 const SHELL = {_json.dumps(shell)};

@@ -9,6 +9,7 @@ import {
 } from "./core.js";
 import { useStore } from "./store.jsx";
 import { prefs } from "./storage.js";
+import { useAuth } from "./auth.jsx";
 import { useUI, Icon, PriorityTag, StatusTag, TypeTag, TypeMark, ProjectTag, SpaceTag, Tags, Check, Empty, Segmented } from "./ui.jsx";
 
 const { useState, useMemo, useEffect, useRef, useCallback } = React;
@@ -818,6 +819,7 @@ function NoteCard({ n }) {
 export function SettingsPage() {
   const { data, mode, actions, getData, syncState } = useStore();
   const { toast, confirm, open } = useUI();
+  const auth = useAuth();
   const theme = data.settings?.theme || "dark";
   const demoCount = COLLECTIONS.reduce((n, c) => n + Object.values(data[c]).filter((r) => r.demo).length, 0);
   const counts = { spaces: "prostora", projects: "projekata", tasks: "zadataka", events: "događaja", notes: "beleški" };
@@ -886,13 +888,27 @@ export function SettingsPage() {
           <Segmented value={theme} onChange={(v) => actions.updateSettings({ theme: v })} label="Tema" options={[{ v: "dark", l: "Tamna" }, { v: "light", l: "Svetla" }, { v: "system", l: "Sistem" }]} />
         </div>
       </section>
+      {auth.enabled && (
+        <section className="panel sset">
+          <h2 className="h2">Nalog</h2>
+          {auth.user ? (
+            <div className="srow"><div><b>{auth.user.email}</b><div className="field-hint">Podaci se sinhronizuju na svim uređajima gde si prijavljen.</div></div>
+              <button className="btn" onClick={async () => { if (await confirm({ title: "Odjaviti se?", message: "Podaci ostaju sačuvani na nalogu. Sa ovog uređaja se uklanja lokalna kopija.", confirmLabel: "Odjavi se", danger: false })) auth.signOut(); }}>Odjavi se</button></div>
+          ) : (
+            <div className="srow"><div><b>Nisi prijavljen</b><div className="field-hint">Podaci su samo na ovom uređaju. Posle prijave prenose se na nalog, ako je nalog prazan.</div></div>
+              <button className="btn btn-primary" onClick={auth.askLogin}>Prijavi se</button></div>
+          )}
+        </section>
+      )}
       <section className="panel sset">
         <h2 className="h2">Podaci</h2>
         <div className="storage-box">
-          <Icon n={mode === "cloud" ? "cloud" : "device"} s={20} />
+          <Icon n={mode === "local" ? "device" : "cloud"} s={20} />
           <div>
-            <b>{mode === "cloud" ? "Čuva se na tvom Claude nalogu" : "Čuva se u ovom pregledaču"}</b>
-            <div className="field-hint">{mode === "cloud"
+            <b>{mode === "supabase" ? "Čuva se u tvojoj Supabase bazi" : mode === "cloud" ? "Čuva se na tvom Claude nalogu" : "Čuva se u ovom pregledaču"}</b>
+            <div className="field-hint">{mode === "supabase"
+              ? "Privatno, vezano za tvoj nalog. Izmene se odmah prenose na druge uređaje; bez interneta čekaju i šalju se kad se veza vrati."
+              : mode === "cloud"
               ? "Privatno — vidiš ih samo ti, na svakom uređaju gde otvoriš aplikaciju. Kopija se drži i u pregledaču radi brzog učitavanja."
               : "localStorage ovog pregledača. Drugi uređaji ne vide ove podatke; redovno pravi izvoz."}
               {syncState.pending > 0 && " · Čuvanje u toku…"}{syncState.error && ` · Poslednja greška: ${syncState.error}`}</div>

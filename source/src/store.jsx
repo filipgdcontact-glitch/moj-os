@@ -41,11 +41,11 @@ const withStatus = (d, task, status) => {
   return { d: putRec(d, t), spawned: null };
 };
 
-export function StoreProvider({ children }) {
+export function StoreProvider({ children, makeAdapter }) {
   const [data, setData] = useState(() => LocalCache.load() || emptyData());
   const [ready, setReady] = useState(false);
   const [mode, setMode] = useState("init");
-  const [syncState, setSyncState] = useState({ pending: 0, error: null, stale: false });
+  const [syncState, setSyncState] = useState({ pending: 0, error: null, stale: false, fatal: null });
   const dataRef = useRef(data);
   const adapterRef = useRef(null);
 
@@ -68,7 +68,7 @@ export function StoreProvider({ children }) {
     let stop = null, cancelled = false;
     (async () => {
       let adapter = null;
-      try { adapter = await cloudAdapter(); } catch { adapter = null; }
+      try { adapter = makeAdapter ? await makeAdapter() : await cloudAdapter(); } catch { adapter = null; }
       if (cancelled) return;
       if (!adapter) adapter = localAdapter();
       adapterRef.current = adapter;
@@ -106,7 +106,7 @@ export function StoreProvider({ children }) {
           if (!def || decided) return;
           if (!s) {
             // Prvo pokretanje na ovom skladištu: prenesi lokalne podatke ili ubaci demo.
-            const start = cache && hasRecords(cache) && adapter.mode === "cloud" ? { ...cache, settings: makeSettings({ ...(cache.settings || {}), id: "settings" }) } : demoData();
+            const start = cache && hasRecords(cache) && adapter.mode !== "local" ? { ...cache, settings: makeSettings({ ...(cache.settings || {}), id: "settings" }) } : demoData();
             const empty = emptyData();
             dataRef.current = empty;
             commit(start);
@@ -114,7 +114,8 @@ export function StoreProvider({ children }) {
           finish();
         },
         onError(e) {
-          setSyncState((st) => ({ ...st, error: e?.message || "Greška pri čuvanju" }));
+          if (e?.fatal) { decided = true; clearTimeout(staleTimer); setReady(true); setSyncState((st) => ({ ...st, fatal: e.message })); return; }
+          setSyncState((st) => ({ ...st, error: e ? e.message || "Greška pri čuvanju" : null }));
         },
         onPending(n) {
           setSyncState((st) => ({ ...st, pending: n, error: n === 0 ? st.error : st.error }));
@@ -122,7 +123,7 @@ export function StoreProvider({ children }) {
       });
     })();
     return () => { cancelled = true; if (typeof stop === "function") stop(); };
-  }, [commit]);
+  }, [commit, makeAdapter]);
 
   // ---------- Akcije ----------
   const actions = useMemo(() => {

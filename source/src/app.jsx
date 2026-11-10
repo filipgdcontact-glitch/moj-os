@@ -6,6 +6,9 @@ import { UIProvider, useUI, Icon, Modal } from "./ui.jsx";
 import { renderModal } from "./views.jsx";
 import { TodayPage, PlannerPage, TasksPage, ProjectsPage, ProjectPage, NotesPage, SettingsPage } from "./pages.jsx";
 import { prefs } from "./storage.js";
+import { AuthGate, useAuth } from "./auth.jsx";
+
+document.documentElement.setAttribute("data-app-theme", prefs.get("theme", "dark"));
 
 const { useEffect, useState } = React;
 
@@ -38,7 +41,11 @@ function SyncBadge({ compact }) {
   const { mode, syncState, ready } = useStore();
   let label = "Učitavanje…", icon = "cloud", cls = "";
   if (ready) {
-    if (mode === "cloud") {
+    if (mode === "supabase") {
+      if (syncState.error) { label = "Nije sačuvano — čeka vezu"; cls = "warn"; }
+      else if (syncState.pending > 0) { label = "Čuvanje…"; cls = "busy"; }
+      else { label = "Sinhronizovano"; }
+    } else if (mode === "cloud") {
       if (syncState.pending > 0) { label = "Čuvanje…"; cls = "busy"; }
       else if (syncState.stale) { label = "Sinhronizacija kasni"; cls = "warn"; }
       else { label = "Sačuvano na nalogu"; }
@@ -48,11 +55,11 @@ function SyncBadge({ compact }) {
 }
 
 function Shell() {
-  const { data, ready } = useStore();
+  const { data, ready, syncState } = useStore();
   const { route, navigate, open } = useUI();
   const [collapsed, setCollapsed] = useState(() => prefs.get("collapsed", false));
   const theme = data.settings?.theme || "dark";
-  useEffect(() => { document.documentElement.setAttribute("data-app-theme", theme); }, [theme]);
+  useEffect(() => { document.documentElement.setAttribute("data-app-theme", theme); prefs.set("theme", theme); }, [theme]);
   useEffect(() => prefs.set("collapsed", collapsed), [collapsed]);
   useEffect(() => {
     const on = (e) => {
@@ -68,7 +75,7 @@ function Shell() {
   }, [open]);
 
   const active = route.page === "projekat" ? "projekti" : route.page;
-  const page = !ready ? <Loading /> : {
+  const page = !ready ? <Loading /> : syncState.fatal ? <Fatal msg={syncState.fatal} /> : {
     dan: <TodayPage />, planer: <PlannerPage />, zadaci: <TasksPage />, projekti: <ProjectsPage />,
     projekat: <ProjectPage id={route.id} />, beleske: <NotesPage />, podesavanja: <SettingsPage />,
   }[route.page];
@@ -123,6 +130,20 @@ function BottomItem({ n, active, navigate }) {
   );
 }
 
+function Fatal({ msg }) {
+  const auth = useAuth();
+  return (
+    <div className="panel fatal">
+      <h1 className="h2"><Icon n="cloud" s={18} />Podaci nisu dostupni</h1>
+      <p>{msg}</p>
+      <div className="head-acts">
+        <button className="btn btn-primary" onClick={() => location.reload()}>Pokušaj ponovo</button>
+        {auth.enabled && auth.user && <button className="btn btn-ghost" onClick={auth.signOut}>Odjavi se</button>}
+      </div>
+    </div>
+  );
+}
+
 function Loading() {
   return (
     <div className="loading">
@@ -136,11 +157,15 @@ const modalRenderer = (m, top) => (m.type === "more" ? <MoreMenu m={m} top={top}
 
 function App() {
   return (
-    <StoreProvider>
-      <UIProvider renderModal={modalRenderer}>
-        <Shell />
-      </UIProvider>
-    </StoreProvider>
+    <AuthGate>
+      {(makeAdapter, key) => (
+        <StoreProvider key={key} makeAdapter={makeAdapter}>
+          <UIProvider renderModal={modalRenderer}>
+            <Shell />
+          </UIProvider>
+        </StoreProvider>
+      )}
+    </AuthGate>
   );
 }
 
