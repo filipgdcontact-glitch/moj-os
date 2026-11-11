@@ -117,6 +117,9 @@ export function StoreProvider({ children, makeAdapter }) {
           if (e?.fatal) { decided = true; clearTimeout(staleTimer); setReady(true); setSyncState((st) => ({ ...st, fatal: e.message })); return; }
           setSyncState((st) => ({ ...st, error: e ? e.message || "Greška pri čuvanju" : null }));
         },
+        onSynced(t) {
+          setSyncState((st) => (st.error || st.stale || st.lastSync !== t ? { ...st, lastSync: t, stale: false, error: null } : st));
+        },
         onPending(n) {
           setSyncState((st) => ({ ...st, pending: n, error: n === 0 ? st.error : st.error }));
         },
@@ -228,6 +231,7 @@ export function StoreProvider({ children, makeAdapter }) {
     };
   }, [mutate]);
 
-  const value = useMemo(() => ({ data, ready, mode, syncState, actions, getData: () => dataRef.current }), [data, ready, mode, syncState, actions]);
+  const refresh = useCallback(() => adapterRef.current?.refresh?.() || Promise.resolve(), []);
+  const value = useMemo(() => ({ data, ready, mode, syncState, actions, refresh, getData: () => dataRef.current }), [data, ready, mode, syncState, actions, refresh]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

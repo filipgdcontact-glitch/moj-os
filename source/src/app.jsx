@@ -40,20 +40,34 @@ function MoreMenu({ m, top }) {
 }
 
 function SyncBadge({ compact }) {
-  const { mode, syncState, ready } = useStore();
+  const { mode, syncState, ready, refresh } = useStore();
+  const { toast } = useUI();
+  const [spin, setSpin] = useState(false);
   let label = "Učitavanje…", icon = "cloud", cls = "";
   if (ready) {
     if (mode === "supabase") {
-      if (syncState.error) { label = "Nije sačuvano — čeka vezu"; cls = "warn"; }
-      else if (syncState.pending > 0) { label = "Čuvanje…"; cls = "busy"; }
-      else { label = "Sinhronizovano"; }
+      if (syncState.error) { label = "Nije sinhronizovano — klikni za ponovni pokušaj"; cls = "warn"; }
+      else if (syncState.pending > 0 || spin) { label = "Sinhronizacija…"; cls = "busy"; }
+      else label = syncState.lastSync ? `Sinhronizovano u ${new Date(syncState.lastSync).toTimeString().slice(0, 5)}` : "Sinhronizovano";
     } else if (mode === "cloud") {
       if (syncState.pending > 0) { label = "Čuvanje…"; cls = "busy"; }
       else if (syncState.stale) { label = "Sinhronizacija kasni"; cls = "warn"; }
       else { label = "Sačuvano na nalogu"; }
     } else { label = "Sačuvano lokalno"; icon = "device"; }
   }
-  return <div className={`sync ${cls}`} title={label}><Icon n={icon} s={15} />{!compact && <span>{label}</span>}</div>;
+  const canRefresh = ready && mode === "supabase";
+  const onClick = async () => {
+    if (!canRefresh || spin) return;
+    setSpin(true);
+    await refresh();
+    setSpin(false);
+    toast("Podaci osveženi");
+  };
+  return (
+    <button type="button" className={`sync ${cls} ${spin ? "is-spin" : ""}`} title={canRefresh ? `${label}. Klikni da osvežiš.` : label} onClick={onClick} disabled={!canRefresh} aria-label={label}>
+      <Icon n={icon} s={15} />{!compact && <span>{label}</span>}
+    </button>
+  );
 }
 
 function Shell() {

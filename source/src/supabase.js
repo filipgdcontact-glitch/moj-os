@@ -71,6 +71,8 @@ export function supabaseAdapter(sb, user) {
     flushing = true;
     const batch = keys.map((k) => [k, queue[k]]);
     try {
+      const { data: sd } = await sb.auth.getSession();
+      if (sd.session && sd.session.expires_at * 1000 < Date.now() + 60000) await sb.auth.refreshSession();
       const ups = batch.filter(([, q]) => q.op === "set").map(([, q]) => ({ user_id: uid, coll: q.coll, id: q.id, data: q.data, updated_at: new Date().toISOString() }));
       for (let i = 0; i < ups.length; i += 400) {
         const { error } = await sb.from("records").upsert(ups.slice(i, i + 400), { onConflict: "user_id,coll,id" });
@@ -120,11 +122,11 @@ export function supabaseAdapter(sb, user) {
     }
   };
 
-  return {
+  const api = {
     mode: "supabase",
     start(handlers) {
       h = handlers;
-      let stopped = false;
+      let stopped = false, lastOk = 0;
       (async () => {
         try {
           await loadAll();
@@ -137,7 +139,16 @@ export function supabaseAdapter(sb, user) {
           h.onError({ message: dbError(e), fatal: true });
           return;
         }
-        channel = sb.channel(`records-${uid}`)
+        subscribe();
+        lastOk = Date.now();
+        h.onSynced?.(lastOk);
+      })();
+
+      // Realtime: ako veza padne, napravi novu i povuci propušteno
+      const subscribe = () => {
+        if (stopped) return;
+        if (channel) { try { sb.removeChannel(channel); } catch {} channel = null; }
+        channel = sb.channel(`records-${uid}-${Date.now()}`)
           .on("postgres_changes", { event: "*", schema: "public", table: "records", filter: `user_id=eq.${uid}` }, (p) => {
             const row = p.eventType === "DELETE" ? p.old : p.new;
             const coll = row?.coll;
@@ -147,22 +158,65 @@ export function supabaseAdapter(sb, user) {
             if (p.eventType === "DELETE") state[coll].delete(row.id);
             else state[coll].set(row.id, row.data);
             emit(coll, true);
+            lastOk = Date.now(); h.onSynced?.(lastOk);
           })
           .subscribe((status) => {
-            if (status === "SUBSCRIBED" && !stopped) {
-              // posle ponovnog povezivanja povuci sve što je propušteno
-              loadAll().then(() => { if (!stopped) { for (const c of COLLECTIONS) emit(c, true); emit("settings", true); } }).catch(() => {});
+            if (stopped) return;
+            if (status === "SUBSCRIBED") refresh("realtime");
+            else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+              clearTimeout(resub);
+              resub = setTimeout(subscribe, 4000);
             }
           });
-      })();
-      const onOnline = () => flush();
-      const onVisible = () => { if (document.visibilityState === "visible") { flush(); loadAll().then(() => { for (const c of COLLECTIONS) emit(c, true); emit("settings", true); }).catch(() => {}); } };
+      };
+
+      // Osvežavanje: prvo obnovi prijavu (token ističe za sat vremena), pa povuci sve iz baze
+      let refreshing = null, fails = 0, resub = null;
+      const refresh = (why) => {
+        if (stopped) return Promise.resolve();
+        if (refreshing) return refreshing;
+        refreshing = (async () => {
+          try {
+            const { data } = await sb.auth.getSession();
+            if (!data.session) throw new Error("Prijava je istekla. Prijavi se ponovo.");
+            if (data.session.expires_at * 1000 < Date.now() + 60000) await sb.auth.refreshSession();
+            await flush();
+            await loadAll();
+            if (stopped) return;
+            for (const c of COLLECTIONS) emit(c, true);
+            emit("settings", true);
+            fails = 0;
+            lastOk = Date.now();
+            h.onSynced?.(lastOk);
+            h.onError?.(null);
+          } catch (e) {
+            fails++;
+            if (/jwt|token|expired/i.test(e?.message || "")) { try { await sb.auth.refreshSession(); } catch {} }
+            if (fails >= 2) h.onError?.({ message: dbError(e) });
+          } finally {
+            refreshing = null;
+          }
+        })();
+        return refreshing;
+      };
+      api.refresh = refresh;
+      const onOnline = () => refresh("online");
+      const onVisible = () => { if (document.visibilityState === "visible") refresh("visible"); };
+      const onFocus = () => { if (Date.now() - lastOk > 20000) refresh("focus"); };
+      // sigurnosna mreža: dok je aplikacija otvorena i vidljiva, proveri bazu svakih 60 s
+      const poll = setInterval(() => { if (document.visibilityState === "visible" && Date.now() - lastOk > 55000) refresh("poll"); }, 60000);
+      const { data: authSub } = sb.auth.onAuthStateChange((ev, sess) => {
+        if (ev === "TOKEN_REFRESHED" && sess?.access_token) { try { sb.realtime.setAuth(sess.access_token); } catch {} }
+      });
       window.addEventListener("online", onOnline);
+      window.addEventListener("focus", onFocus);
       document.addEventListener("visibilitychange", onVisible);
       return () => {
         stopped = true;
-        clearTimeout(timer); clearTimeout(retry);
+        clearTimeout(timer); clearTimeout(retry); clearTimeout(resub); clearInterval(poll);
+        authSub?.subscription?.unsubscribe();
         window.removeEventListener("online", onOnline);
+        window.removeEventListener("focus", onFocus);
         document.removeEventListener("visibilitychange", onVisible);
         if (channel) sb.removeChannel(channel);
       };
@@ -190,7 +244,9 @@ export function supabaseAdapter(sb, user) {
       schedule();
     },
     pending: pendingCount,
+    refresh: () => Promise.resolve(),
   };
+  return api;
 }
 
 // ============================================================
