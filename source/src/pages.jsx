@@ -593,6 +593,59 @@ const progressOf = (data, pid) => {
   return { total: ts.length, done, pct: ts.length ? Math.round((done / ts.length) * 100) : 0 };
 };
 
+/**
+ * Aktivnost projekta u poslednjih 14 dana — od nje zavisi veličina kartice.
+ *  otvoren zadatak 1 · završen zadatak 3 · nov zadatak 1 · događaj u periodu ±14 dana 1 · nova/izmenjena beleška 1
+ */
+const ACT_DAYS = 14;
+function projectActivity(data, pid) {
+  const t = today();
+  const from = addDays(t, -(ACT_DAYS - 1));
+  const day = (iso) => (iso ? isoToDay(iso) : null);
+  const inWin = (d) => d && d >= from && d <= t;
+  const perDay = Array(ACT_DAYS).fill(0);
+  const bump = (d, w = 1) => { if (inWin(d)) perDay[diffDays(from, d)] += w; };
+  let score = 0, open = 0, done = 0, total = 0;
+  const openTasks = [];
+  for (const x of Object.values(data.tasks)) {
+    if (x.projectId !== pid) continue;
+    total++;
+    if (x.status === "done") {
+      done++;
+      const cd = day(x.completedAt);
+      if (inWin(cd)) { score += 3; bump(cd, 3); }
+    } else {
+      open++; score += 1; openTasks.push(x);
+    }
+    const cr = day(x.createdAt);
+    if (inWin(cr)) { score += 1; bump(cr); }
+  }
+  for (const e of Object.values(data.events)) {
+    if (e.projectId !== pid) continue;
+    if (Math.abs(diffDays(t, e.startDate)) <= ACT_DAYS || e.recurrence !== "none") { score += 1; bump(day(e.createdAt)); }
+  }
+  for (const n of Object.values(data.notes)) {
+    if (n.projectId !== pid) continue;
+    const ud = day(n.updatedAt);
+    if (inWin(ud)) { score += 1; bump(ud); }
+  }
+  openTasks.sort((a, b) => (a.dueDate || a.workDate || "9999").localeCompare(b.dueDate || b.workDate || "9999") || prioRank(b.priority) - prioRank(a.priority));
+  return { score, open, done, total, pct: total ? Math.round((done / total) * 100) : 0, perDay, openTasks };
+}
+
+/** Veličine: najaktivniji dobijaju veliku (2×2) ili široku (2×1) karticu. */
+function sizeProjects(list) {
+  const max = Math.max(0, ...list.map((x) => x.act.score));
+  let big = 0;
+  return list.map((x, i) => {
+    const r = max ? x.act.score / max : 0;
+    let size = "sm";
+    if (x.act.score >= 8 && r >= 0.85 && big < 2) { size = "lg"; big++; }
+    else if (x.act.score >= 4 && r >= 0.15) size = "wide";
+    return { ...x, size, top: i === 0 && max >= 8 };
+  });
+}
+
 export function ProjectsPage() {
   const { data } = useStore();
   const o = useOpen();
@@ -600,8 +653,14 @@ export function ProjectsPage() {
   const [show, setShow] = useState(() => prefs.get("projShow", "active"));
   useEffect(() => prefs.set("projShow", show), [show]);
   const spaces = Object.values(data.spaces).sort((a, b) => a.name.localeCompare(b.name, "sr"));
-  const projects = Object.values(data.projects).filter((p) => show === "all" || p.status === "active" || p.status === "paused");
-  const groups = [...spaces.map((s) => ({ s, ps: projects.filter((p) => p.spaceId === s.id) })), { s: null, ps: projects.filter((p) => !p.spaceId || !data.spaces[p.spaceId]) }].filter((g) => g.s || g.ps.length);
+  const ranked = useMemo(() => {
+    const list = Object.values(data.projects)
+      .filter((p) => show === "all" || p.status === "active" || p.status === "paused")
+      .map((p) => ({ p, act: projectActivity(data, p.id) }))
+      .sort((a, b) => b.act.score - a.act.score || b.p.updatedAt.localeCompare(a.p.updatedAt));
+    return sizeProjects(list);
+  }, [data, show]);
+  const groups = [...spaces.map((s) => ({ s, ps: ranked.filter((x) => x.p.spaceId === s.id) })), { s: null, ps: ranked.filter((x) => !x.p.spaceId || !data.spaces[x.p.spaceId]) }].filter((g) => g.s || g.ps.length);
   return (
     <div>
       <div className="page-head">
@@ -625,32 +684,68 @@ export function ProjectsPage() {
         <section key={g.s?.id || "none"} className="pgroup">
           <h2 className="h2 pgroup-h">{g.s ? <><span className="sdot" style={{ borderColor: g.s.color }} />{g.s.name}</> : "Bez prostora"}<span className="count">{g.ps.length}</span></h2>
           {g.ps.length ? (
-            <div className="pgrid">{g.ps.map((p) => <ProjectCard key={p.id} p={p} onOpen={() => navigate(`projekat-${p.id}`)} />)}</div>
+            <div className="pgrid">{g.ps.map((x) => <ProjectCard key={x.p.id} p={x.p} act={x.act} size={x.size} top={x.top} onOpen={() => navigate(`projekat-${x.p.id}`)} />)}</div>
           ) : <div className="pempty">Nema {show === "active" ? "aktivnih " : ""}projekata. <button className="link" onClick={() => o.form("project", { spaceId: g.s.id })}>Dodaj projekat</button></div>}
         </section>
       ))}
+      {ranked.some((x) => x.size !== "sm") && <p className="field-hint pgrid-hint">Veće kartice imaju projekti na kojima najviše radiš: otvoreni i završeni zadaci, događaji i beleške u poslednjih {ACT_DAYS} dana.</p>}
     </div>
   );
 }
 
-function ProjectCard({ p, onOpen }) {
+function ProjectCard({ p, act, size = "sm", top, onOpen }) {
   const { data } = useStore();
-  const pr = progressOf(data, p.id);
   const t = today();
-  const next = Object.values(data.tasks).filter((x) => x.projectId === p.id && x.status !== "done" && x.dueDate).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+  const next = act.openTasks.find((x) => x.dueDate);
   const ev = Object.values(data.events).filter((e) => e.projectId === p.id).length;
   const nn = Object.values(data.notes).filter((n) => n.projectId === p.id).length;
+  const listN = size === "lg" ? 4 : size === "wide" ? 2 : 0;
+  const maxDay = Math.max(1, ...act.perDay);
+  const activeDays = act.perDay.filter(Boolean).length;
   return (
-    <button className="pcard" onClick={onOpen} style={{ "--pc": p.color }}>
-      <div className="pcard-top"><ProjectAvatar p={p} /><span className="pcard-name">{p.name}</span>{p.status !== "active" && <span className="tag">{projStatusLabel(p.status)}</span>}</div>
+    <button className={`pcard size-${size}`} onClick={onOpen} style={{ "--pc": p.color }}>
+      <div className="pcard-top">
+        <ProjectAvatar p={p} size={size === "lg" ? "lg" : "md"} />
+        <span className="pcard-name">{p.name}</span>
+        {top && <span className="tag tag-focus"><Icon n="sun" s={12} />U fokusu</span>}
+        {p.status !== "active" && <span className="tag">{projStatusLabel(p.status)}</span>}
+      </div>
       {p.description && <div className="pcard-desc">{p.description}</div>}
-      <div className="progress" aria-label={`Napredak ${pr.pct}%`}><span style={{ width: `${pr.pct}%` }} /></div>
+      {size === "lg" && (
+        <div className="pcard-big">
+          <span className="pcard-pct">{act.pct}%</span><span className="pcard-pct-l">završeno · {act.done} od {act.total} zadataka</span>
+        </div>
+      )}
+      <div className="progress" aria-label={`Napredak ${act.pct}%`}><span style={{ width: `${act.pct}%` }} /></div>
+      {listN > 0 && act.openTasks.length > 0 && (
+        <ul className="pcard-tasks">
+          {act.openTasks.slice(0, listN).map((x) => {
+            const d = x.dueDate || x.workDate;
+            return (
+              <li key={x.id}>
+                <span className={`pt-dot prio-${x.priority}`} aria-hidden="true" />
+                <span className="pt-t">{x.title}</span>
+                {d && <span className={`pt-d ${x.dueDate && x.dueDate < t ? "is-late" : ""}`}>{fmtRel(d)}</span>}
+              </li>
+            );
+          })}
+          {act.openTasks.length > listN && <li className="pt-more">+{act.openTasks.length - listN} još</li>}
+        </ul>
+      )}
+      {size === "lg" && (
+        <div className="pcard-activity">
+          <div className="spark" aria-hidden="true">
+            {act.perDay.map((v, i) => <i key={i} style={{ height: `${v ? 18 + (v / maxDay) * 82 : 6}%` }} className={v ? "on" : ""} />)}
+          </div>
+          <span className="field-hint">Aktivan {activeDays} od poslednjih {ACT_DAYS} dana</span>
+        </div>
+      )}
       <div className="pcard-meta">
-        <span>{pr.done}/{pr.total} zadataka</span>
+        {size !== "lg" && <span>{act.done}/{act.total} zadataka</span>}
         {ev > 0 && <span>{ev} dog.</span>}
         {nn > 0 && <span>{nn} bel.</span>}
-        {next && <span className={next.dueDate < t ? "is-late" : ""}><Icon n="flag" s={12} />{fmtRel(next.dueDate)}</span>}
-        {p.dueDate && <span>rok {fmtNum(p.dueDate)}</span>}
+        {next && listN === 0 && <span className={next.dueDate < t ? "is-late" : ""}><Icon n="flag" s={12} />{fmtRel(next.dueDate)}</span>}
+        {p.dueDate && <span>rok projekta {fmtNum(p.dueDate)}</span>}
       </div>
     </button>
   );
