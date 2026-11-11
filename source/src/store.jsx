@@ -160,7 +160,7 @@ export function StoreProvider({ children, makeAdapter }) {
         const src = dataRef.current[KINDS[kind]][id];
         if (!src) return null;
         const t = nowISO();
-        const copy = { ...src, id: uid(src.id.split("-")[0]), createdAt: t, updatedAt: t, demo: false };
+        const copy = { ...src, id: uid(src.id.split("-")[0]), createdAt: t, updatedAt: t, demo: false, attachments: [] };
         if (kind === "task") Object.assign(copy, { title: `${src.title} (kopija)`, status: src.status === "done" ? "todo" : src.status, completedAt: null, nextId: null, prevId: null });
         else if (kind === "project" || kind === "space") copy.name = `${src.name} (kopija)`;
         else if (kind === "note") Object.assign(copy, { title: src.title ? `${src.title} (kopija)` : "", pinned: false });

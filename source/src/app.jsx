@@ -4,7 +4,7 @@
 import { StoreProvider, useStore } from "./store.jsx";
 import { UIProvider, useUI, Icon, Modal, ProjectAvatar } from "./ui.jsx";
 import { renderModal } from "./views.jsx";
-import { TodayPage, PlannerPage, TasksPage, ProjectsPage, ProjectPage, NotesPage, SettingsPage } from "./pages.jsx";
+import { TodayPage, PlannerPage, TasksPage, ProjectsPage, ProjectPage, NotesPage, SettingsPage, ReviewPage } from "./pages.jsx";
 import { prefs } from "./storage.js";
 import { AuthGate, useAuth } from "./auth.jsx";
 
@@ -19,6 +19,7 @@ const NAV = [
   { r: "zadaci", l: "Zadaci", i: "checks" },
   { r: "projekti", l: "Projekti", i: "folder" },
   { r: "beleske", l: "Beleške", i: "note" },
+  { r: "pregled", l: "Nedeljni pregled", i: "review" },
   { r: "podesavanja", l: "Podešavanja", i: "settings" },
 ];
 const MOBILE_MAIN = ["dan", "planer", "zadaci"];
@@ -88,7 +89,7 @@ function Shell() {
   const active = route.page === "projekat" ? "projekti" : route.page;
   const page = !ready ? <Loading /> : syncState.fatal ? <Fatal msg={syncState.fatal} /> : {
     dan: <TodayPage />, planer: <PlannerPage />, zadaci: <TasksPage />, projekti: <ProjectsPage />,
-    projekat: <ProjectPage id={route.id} />, beleske: <NotesPage />, podesavanja: <SettingsPage />,
+    projekat: <ProjectPage id={route.id} />, beleske: <NotesPage />, pregled: <ReviewPage />, podesavanja: <SettingsPage />,
   }[route.page];
   const title = NAV.find((n) => n.r === active)?.l || "Moj OS";
 

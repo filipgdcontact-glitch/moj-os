@@ -150,7 +150,7 @@ export const makeSpace = (p = {}) => ({ ...base("s", "space"), name: "", color: 
 export const makeProject = (p = {}) => ({
   ...base("p", "project"),
   name: "", description: "", spaceId: null, status: "active", color: COLORS[0],
-  startDate: today(), dueDate: null,
+  startDate: today(), dueDate: null, links: [], attachments: [],
   ...p,
 });
 
@@ -160,7 +160,7 @@ export const makeTask = (p = {}) => ({
   title: "", description: "", status: "todo", priority: "normal",
   projectId: null, spaceId: null,
   dueDate: null, dueTime: null, workDate: null, workTime: null, duration: null,
-  tags: [], recurrence: "none", completedAt: null, nextId: null, prevId: null,
+  tags: [], recurrence: "none", completedAt: null, nextId: null, prevId: null, attachments: [],
   ...p,
 });
 
@@ -175,7 +175,7 @@ export const makeEvent = (p = {}) => ({
 /** Note — beleška (body je sanitizovan HTML) */
 export const makeNote = (p = {}) => ({
   ...base("n", "note"),
-  title: "", body: "", projectId: null, tags: [], pinned: false,
+  title: "", body: "", projectId: null, tags: [], pinned: false, attachments: [],
   ...p,
 });
 
@@ -344,6 +344,8 @@ export const normalizeImport = (json) => {
         rec.id = nid;
       }
       if (!Array.isArray(rec.tags)) rec.tags = [];
+      if ("links" in rec && !Array.isArray(rec.links)) rec.links = [];
+      if ("attachments" in rec && !Array.isArray(rec.attachments)) rec.attachments = [];
       rec.tags = rec.tags.map(String).slice(0, 30);
       out[c][rec.id] = rec;
     }
@@ -421,3 +423,19 @@ export const htmlToText = (html) => {
 export const textToHtml = (txt) =>
   (txt || "").split(/\n/).map((l) => `<p>${l.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") || "<br>"}</p>`).join("");
 export const noteTitle = (n) => n.title?.trim() || htmlToText(n.body).split("\n")[0].slice(0, 80) || "Beleška bez naslova";
+
+// ---------- Linkovi ----------
+/** Vraća ispravan http(s) URL ili null. Dodaje https:// ako nedostaje. */
+export const normalizeUrl = (raw) => {
+  let u = (raw || "").trim();
+  if (!u) return null;
+  if (/^mailto:/i.test(u)) return u;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = "https://" + u;
+  try {
+    const x = new URL(u);
+    if (!/^https?:$/.test(x.protocol) || !x.hostname.includes(".")) return null;
+    return x.href;
+  } catch { return null; }
+};
+export const hostOf = (url) => { try { const h = new URL(url).hostname; return h.replace(/^www\./, ""); } catch { return url; } };
+export const fmtSize = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${Math.round(b / 1024)} KB` : `${(b / 1048576).toFixed(1).replace(".", ",")} MB`);

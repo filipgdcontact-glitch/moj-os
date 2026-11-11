@@ -5,11 +5,12 @@ import {
   today, addDays, addMonths, weekStart, monthStart, dow, parse, diffDays, toMin, fromMin, nowTime,
   DAYS_S, DAYS, fmtFull, fmtRel, fmtWeekRange, fmtMonth, fmtNum, fmtDay, fmtDuration, fmtStamp,
   STATUS, PRIORITY, PROJECT_STATUS, buildAgenda, prioRank, statusLabel, projStatusLabel, ENTRY_TYPE,
-  noteTitle, htmlToText, isoToDay, textToHtml, makeNote, serialize, normalizeImport, COLLECTIONS, sanitizeHtml,
+  noteTitle, htmlToText, isoToDay, hostOf, textToHtml, makeNote, serialize, normalizeImport, COLLECTIONS, sanitizeHtml,
 } from "./core.js";
 import { useStore } from "./store.jsx";
 import { prefs } from "./storage.js";
 import { useAuth } from "./auth.jsx";
+import { Attachments } from "./attachments.jsx";
 import { useUI, Icon, PriorityTag, StatusTag, TypeTag, TypeMark, ProjectTag, SpaceTag, Tags, Check, Empty, Segmented, ProjectAvatar } from "./ui.jsx";
 
 const { useState, useMemo, useEffect, useRef, useCallback } = React;
@@ -527,6 +528,7 @@ function TaskRow({ t }) {
           {t.dueDate && <span className={`meta ${late ? "is-late" : ""}`}><Icon n="flag" s={12} />{fmtRel(t.dueDate)}{t.dueTime ? ` ${t.dueTime}` : ""}</span>}
           {t.workDate && <span className="meta"><Icon n="clock" s={12} />{fmtRel(t.workDate)}{t.workTime ? ` ${t.workTime}` : ""}</span>}
           {t.recurrence !== "none" && <Icon n="repeat" s={13} className="muted-ic" />}
+          {t.attachments?.length > 0 && <span className="meta"><Icon n="attach" s={13} />{t.attachments.length}</span>}
           <ProjectTag id={t.projectId} />
           {!t.projectId && <SpaceTag id={t.spaceId} />}
           <Tags tags={t.tags} />
@@ -570,6 +572,7 @@ function Kanban({ tasks }) {
                     <div className="entry-meta">
                       {x.dueDate && <span className={`meta ${x.status !== "done" && x.dueDate < today() ? "is-late" : ""}`}><Icon n="calendar" s={13} />{fmtRel(x.dueDate)}</span>}
                       {x.workDate && <span className="meta"><Icon n="clock" s={13} />{fmtRel(x.workDate)}</span>}
+                      {x.attachments?.length > 0 && <span className="meta"><Icon n="attach" s={13} />{x.attachments.length}</span>}
                     </div>
                     {x.tags?.length > 0 && <div className="kcard-tags">{x.tags.map((t) => <span key={t} className="pill">{t}</span>)}</div>}
                     {x.projectId && <div className="kcard-foot"><ProjectTag id={x.projectId} /></div>}
@@ -811,6 +814,8 @@ export function ProjectPage({ id }) {
         </section>
         </div>
         <div className="proj-side">
+          <ProjectLinks p={p} />
+          <section className="panel"><Attachments kind="project" id={p.id} /></section>
           <section className="panel">
             <div className="panel-head"><h2 className="h2">Događaji <span className="count">{events.length}</span></h2><button className="btn btn-sm" onClick={() => o.form("event", { projectId: p.id })}><Icon n="plus" s={15} />Događaj</button></div>
             {events.length ? <div className="entries">{[...upcoming, ...past].map((e) => (
@@ -861,6 +866,38 @@ function ProjectCalendar({ projectId }) {
       )}
       <div className="legend legend-foot"><TypeTag type="event" /><TypeTag type="work" /><TypeTag type="deadline" /><TypeTag type="note" /></div>
       <p className="field-hint center">Beleške se prikazuju na dan kada su napravljene. Klik na dan otvara tu nedelju.</p>
+    </section>
+  );
+}
+
+function ProjectLinks({ p }) {
+  const { actions } = useStore();
+  const { open, confirm, toast } = useUI();
+  const links = p.links || [];
+  const remove = async (l) => {
+    if (!(await confirm({ title: "Ukloniti link?", message: l.label || hostOf(l.url), confirmLabel: "Ukloni" }))) return;
+    actions.save({ ...p, links: links.filter((x) => x.id !== l.id) });
+    toast("Link uklonjen");
+  };
+  return (
+    <section className="panel">
+      <div className="panel-head"><h2 className="h2">Linkovi <span className="count">{links.length}</span></h2>
+        <button className="btn btn-sm" onClick={() => open({ type: "link", projectId: p.id })}><Icon n="plus" s={15} />Link</button></div>
+      {links.length ? (
+        <div className="links">
+          {links.map((l) => (
+            <div key={l.id} className="lrow">
+              <a className="lrow-a" href={l.url} target="_blank" rel="noopener noreferrer">
+                <span className="lrow-ic" aria-hidden="true">{hostOf(l.url).charAt(0).toUpperCase()}</span>
+                <span className="lrow-t"><b>{l.label || hostOf(l.url)}</b><small>{hostOf(l.url)}</small></span>
+                <Icon n="arrowRight" s={15} className="lrow-go" />
+              </a>
+              <button className="icon-btn sm" aria-label={`Uredi link ${l.label || hostOf(l.url)}`} title="Uredi" onClick={() => open({ type: "link", projectId: p.id, linkId: l.id })}><Icon n="edit" s={15} /></button>
+              <button className="icon-btn sm danger" aria-label={`Ukloni link ${l.label || hostOf(l.url)}`} title="Ukloni" onClick={() => remove(l)}><Icon n="x" s={15} /></button>
+            </div>
+          ))}
+        </div>
+      ) : <div className="pempty">Dodaj Drive folder, oglasni nalog, sajt ili dizajn, da ih otvaraš jednim klikom.</div>}
     </section>
   );
 }
@@ -1047,6 +1084,163 @@ export function SettingsPage() {
       <section className="panel sset">
         <h2 className="h2">Prečice</h2>
         <div className="kbd-list"><span><kbd>N</kbd> Novo</span><span><kbd>Esc</kbd> Zatvori prozor</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Sačuvaj brzu belešku</span></div>
+      </section>
+    </div>
+  );
+}
+
+// ---------- NEDELJNI PREGLED ----------
+const REVIEW_TAG = "nedeljni-pregled";
+export function ReviewPage() {
+  const { data, actions } = useStore();
+  const o = useOpen();
+  const { toast, navigate } = useUI();
+  const t = today();
+  const [ws, setWs] = useState(() => weekStart(t));
+  const we = addDays(ws, 6);
+  const nextWs = addDays(ws, 7);
+  const isNow = ws === weekStart(t);
+  const inWeek = (d) => d && d >= ws && d <= we;
+
+  const done = useMemo(() => Object.values(data.tasks).filter((x) => x.status === "done" && inWeek(isoToDay(x.completedAt))).sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || "")), [data.tasks, ws]);
+  const created = useMemo(() => Object.values(data.tasks).filter((x) => inWeek(isoToDay(x.createdAt))).length, [data.tasks, ws]);
+  // tekuća nedelja: sve što kasni; druga nedelja: otvoreni zadaci sa rokom ili terminom u njoj
+  const isPast = ws < weekStart(t);
+  const unfinished = useMemo(() => Object.values(data.tasks).filter((x) => {
+    if (x.status === "done") return false;
+    const d = x.dueDate || x.workDate;
+    return d && (isNow ? d < t : inWeek(d));
+  }).sort((a, b) => (a.dueDate || a.workDate).localeCompare(b.dueDate || b.workDate)), [data.tasks, ws, t]);
+  const lateTitle = isNow ? "Kasni" : isPast ? "Ostalo nezavršeno" : "Zakazano";
+  const stalled = useMemo(() => Object.values(data.projects).filter((p) => p.status === "active").map((p) => ({ p, a: projectActivity(data, p.id) })).filter((x) => x.a.open > 0 && x.a.perDay.every((v) => v === 0)), [data]);
+  const nextAgenda = useMemo(() => buildAgenda(data, nextWs, addDays(nextWs, 6)), [data, nextWs]);
+  const nextCount = Object.values(nextAgenda).reduce((n, d) => n + d.filter((e) => e.status !== "done").length, 0);
+
+  const byProject = useMemo(() => {
+    const m = new Map();
+    for (const x of done) { const k = x.projectId && data.projects[x.projectId] ? x.projectId : ""; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+  }, [done, data.projects]);
+
+  // osvrt nedelje: beleška označena za ovu nedelju
+  const reviewNote = Object.values(data.notes).find((n) => n.reviewWeek === ws);
+  const [reflect, setReflect] = useState("");
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => { setReflect(reviewNote ? htmlToText(reviewNote.body) : ""); setDirty(false); }, [ws, reviewNote?.id, reviewNote?.updatedAt]);
+  const saveReflect = () => {
+    const body = textToHtml(reflect.trim());
+    if (reviewNote) actions.save({ ...reviewNote, body });
+    else actions.save(makeNote({ title: `Nedeljni pregled · ${fmtWeekRange(ws)}`, body, tags: [REVIEW_TAG], reviewWeek: ws }));
+    setDirty(false);
+    toast("Osvrt sačuvan u beleškama");
+  };
+
+  const moveToMonday = (x) => {
+    const target = addDays(weekStart(t), 7);
+    actions.save({ ...x, dueDate: x.dueDate ? target : null, workDate: x.workDate ? target : null });
+    toast(`Prebačeno na ${fmtRel(target)}`);
+  };
+  const moveAll = () => {
+    const target = addDays(weekStart(t), 7);
+    unfinished.forEach((x) => actions.save({ ...x, dueDate: x.dueDate ? target : null, workDate: x.workDate ? target : null }));
+    toast(`${unfinished.length} ${plural(unfinished.length, "zadatak prebačen", "zadatka prebačena", "zadataka prebačeno")} na ${fmtRel(target)}`);
+  };
+
+  return (
+    <div className="review">
+      <div className="page-head">
+        <div>
+          <h1 className="h1">Nedeljni pregled</h1>
+          <p className="page-sub">Šta je urađeno, šta je ostalo i šta sledi.</p>
+        </div>
+      </div>
+      <div className="week-nav">
+        <div className="week-label">{fmtWeekRange(ws)}{isNow && <span className="tag rv-now">Ova nedelja</span>}</div>
+        <div className="week-btns">
+          <button className="icon-btn" onClick={() => setWs(addDays(ws, -7))} aria-label="Prethodna nedelja"><Icon n="left" /></button>
+          <button className="btn btn-sm" disabled={isNow} onClick={() => setWs(weekStart(t))}>Danas</button>
+          <button className="icon-btn" onClick={() => setWs(addDays(ws, 7))} aria-label="Sledeća nedelja"><Icon n="right" /></button>
+        </div>
+      </div>
+
+      <div className="rv-stats">
+        <div><b>{done.length}</b><span>završeno</span></div>
+        <div><b>{created}</b><span>novih zadataka</span></div>
+        <div className={unfinished.length ? "is-warn" : ""}><b>{unfinished.length}</b><span>{lateTitle.toLowerCase()}</span></div>
+        <div><b>{nextCount}</b><span>obaveza sledeće nedelje</span></div>
+      </div>
+
+      <div className="rv-grid">
+        <section className="panel">
+          <div className="panel-head"><h2 className="h2"><Icon n="check" s={17} />Završeno <span className="count">{done.length}</span></h2></div>
+          {done.length ? byProject.map(([pid, list]) => (
+            <div key={pid || "none"} className="rv-group">
+              <div className="rv-group-h">{pid ? <><ProjectAvatar p={data.projects[pid]} size="sm" />{data.projects[pid].name}</> : "Bez projekta"}<span className="count">{list.length}</span></div>
+              {list.map((x) => (
+                <button key={x.id} className="rv-item is-done" onClick={() => o.view("task", x.id)}>
+                  <span className="rv-check"><Icon n="check" s={13} /></span><span className="rv-t">{x.title}</span><span className="rv-d">{fmtRel(isoToDay(x.completedAt))}</span>
+                </button>
+              ))}
+            </div>
+          )) : <div className="pempty">{isNow ? "Ove nedelje još nema završenih zadataka." : "Te nedelje nije završen nijedan zadatak."}</div>}
+        </section>
+
+        <div className="rv-side">
+          <section className="panel">
+            <div className="panel-head"><h2 className="h2"><Icon n="flag" s={17} />{lateTitle} <span className="count">{unfinished.length}</span></h2>
+              {unfinished.length > 1 && <button className="btn btn-sm" onClick={moveAll}>Sve na ponedeljak</button>}</div>
+            {unfinished.length ? <div className="entries">{unfinished.map((x) => (
+              <div key={x.id} className="rv-late">
+                <Check checked={false} onChange={() => o.complete(x.id, true, x.status)} label={`Završi: ${x.title}`} />
+                <button className="rv-late-main" onClick={() => o.view("task", x.id)}>
+                  <span className="rv-t">{x.title}</span>
+                  <span className="rv-sub"><span className={(x.dueDate || x.workDate) < t ? "is-late" : ""}>{fmtRel(x.dueDate || x.workDate)}</span>{x.projectId && data.projects[x.projectId] && <> · {data.projects[x.projectId].name}</>}</span>
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={() => moveToMonday(x)} title="Prebaci rok i termin na ponedeljak">Na pon.</button>
+              </div>
+            ))}</div> : <div className="pempty">{isNow ? "Ništa ne kasni." : isPast ? "Sve iz te nedelje je završeno." : "Za tu nedelju još ništa nije zakazano."}</div>}
+          </section>
+
+          {stalled.length > 0 && (
+            <section className="panel">
+              <div className="panel-head"><h2 className="h2"><Icon n="clock" s={17} />Projekti bez pomaka</h2></div>
+              <p className="field-hint rv-hint">Imaju otvorene zadatke, a u poslednjih 14 dana se ništa nije desilo.</p>
+              <div className="entries">{stalled.map(({ p, a }) => (
+                <button key={p.id} className="evrow" onClick={() => navigate(`projekat-${p.id}`)}>
+                  <ProjectAvatar p={p} size="sm" /><span className="evrow-t">{p.name}</span><span className="evrow-d">{a.open} {plural(a.open, "otvoren", "otvorena", "otvorenih")}</span>
+                </button>
+              ))}</div>
+            </section>
+          )}
+        </div>
+      </div>
+
+      <section className="panel">
+        <div className="panel-head"><h2 className="h2"><Icon n="calendar" s={17} />Sledeća nedelja · {fmtWeekRange(nextWs)}</h2>
+          <button className="btn btn-sm" onClick={() => o.form("task", { workDate: nextWs })}><Icon n="plus" s={15} />Isplaniraj zadatak</button></div>
+        <div className="rv-next">
+          {Object.entries(nextAgenda).map(([d, items], i) => (
+            <div key={d} className={`rv-day ${items.length ? "" : "is-empty"}`}>
+              <div className="rv-day-h"><b>{DAYS_S[i]}</b><span>{fmtNum(d)}</span></div>
+              {items.length ? items.slice(0, 4).map((e) => (
+                <button key={e.key} className={`mitem chip-${e.type}`} onClick={() => o.view(e.type === "event" ? "event" : "task", e.id, e.date)} title={e.title}>
+                  <TypeMark type={e.type} /><span className="mitem-t">{e.title}</span>
+                </button>
+              )) : <button className="rv-day-add" onClick={() => o.form("task", { workDate: d })} aria-label={`Dodaj za ${fmtFull(d)}`}><Icon n="plus" s={14} /></button>}
+              {items.length > 4 && <span className="mmore">+{items.length - 4}</span>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><h2 className="h2"><Icon n="note" s={17} />Osvrt na nedelju</h2>{reviewNote && <span className="field-hint">Čuva se kao beleška #{REVIEW_TAG}</span>}</div>
+        <textarea id="review-reflect" className="input rv-reflect" rows={4} value={reflect} onChange={(e) => { setReflect(e.target.value); setDirty(true); }}
+          placeholder={"Šta je išlo dobro?\nŠta je zapelo i zašto?\nNa šta se fokusiram sledeće nedelje?"} />
+        <div className="capture-acts">
+          <button className="btn btn-primary btn-sm" disabled={!dirty || !reflect.trim()} onClick={saveReflect}>Sačuvaj osvrt</button>
+          {reviewNote && <button className="btn btn-ghost btn-sm" onClick={() => o.view("note", reviewNote.id)}>Otvori belešku</button>}
+        </div>
       </section>
     </div>
   );

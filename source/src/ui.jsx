@@ -50,6 +50,8 @@ const P = {
   task: "M5 4h14v16H5zM8.5 12l2.5 2.5 4.5-5",
   undo: "M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
   moon: "M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z",
+  review: "M9 4h6v3H9zM7 5.5H5.5A1.5 1.5 0 0 0 4 7v12.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V7a1.5 1.5 0 0 0-1.5-1.5H17M8.5 14l2.5 2.5 4.5-5",
+  attach: "M20 11.5 12.4 19a5 5 0 0 1-7.1-7.1l7.8-7.8a3.3 3.3 0 0 1 4.7 4.7l-7.8 7.8a1.7 1.7 0 0 1-2.4-2.4l7.2-7.1",
   flagFill: "M5 21V4M5 4h11.5l-2.2 4.2 2.2 4.3H5",
   home: "M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z",
   grid: "M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z",
@@ -160,7 +162,7 @@ export function UIProvider({ children, renderModal }) {
   );
 }
 
-const ROUTES = ["dan", "planer", "zadaci", "projekti", "beleske", "podesavanja"];
+const ROUTES = ["dan", "planer", "zadaci", "projekti", "beleske", "pregled", "podesavanja"];
 function parseHash(h = location.hash) {
   const s = (h || "").replace(/^#/, "");
   if (s.startsWith("projekat-")) return { page: "projekat", id: s.slice(9) };

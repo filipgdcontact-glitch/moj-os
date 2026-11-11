@@ -3,7 +3,7 @@
 // ============================================================
 import {
   STATUS, PRIORITY, RECUR, PROJECT_STATUS, COLORS, makeTask, makeEvent, makeNote, makeProject, makeSpace,
-  today, toMin, fromMin, fmtRel, sanitizeHtml, htmlToText, makeSpace as mkSpace, nowISO,
+  today, toMin, fromMin, fmtRel, sanitizeHtml, htmlToText, makeSpace as mkSpace, nowISO, normalizeUrl, uid,
 } from "./core.js";
 import { useStore } from "./store.jsx";
 import { useUI, Modal, Icon, Segmented } from "./ui.jsx";
@@ -385,8 +385,12 @@ export function ProjectForm({ m, top }) {
   const { close, toast } = useUI();
   const existing = m.id ? data.projects[m.id] : null;
   const spaces = Object.values(data.spaces);
-  const { f, set, errors, setErrors } = useForm(() => existing ? { ...existing } : makeProject({ spaceId: spaces[0]?.id || null, color: COLORS[Object.keys(data.projects).length % COLORS.length], ...(m.initial || {}) }));
+  const { f, set, errors, setErrors } = useForm(() => {
+    const base = existing ? { ...existing } : makeProject({ spaceId: spaces[0]?.id || null, color: COLORS[Object.keys(data.projects).length % COLORS.length], ...(m.initial || {}) });
+    return { ...base, links: (base.links || []).map((l) => ({ ...l })) };
+  });
   const [newSpace, setNewSpace] = useState(spaces.length ? null : "");
+  const setLink = (i, k, v) => { set("links", f.links.map((l, j) => (j === i ? { ...l, [k]: v } : l))); setErrors((x) => ({ ...x, [`link${i}`]: null })); };
   const submit = () => {
     const e = {};
     const name = (f.name || "").trim();
@@ -394,6 +398,13 @@ export function ProjectForm({ m, top }) {
     if (newSpace !== null && !newSpace.trim()) e.space = "Upiši naziv novog prostora.";
     if (newSpace === null && !f.spaceId) e.space = "Izaberi prostor.";
     if (f.dueDate && f.startDate && f.dueDate < f.startDate) e.dueDate = "Rok je pre datuma početka.";
+    const links = [];
+    f.links.forEach((l, i) => {
+      if (!l.url.trim() && !l.label.trim()) return;
+      const url = normalizeUrl(l.url);
+      if (!url) e[`link${i}`] = "Upiši ispravnu adresu, npr. drive.google.com/…";
+      else links.push({ id: l.id, label: l.label.trim(), url });
+    });
     if (Object.keys(e).length) { setErrors(e); return; }
     let spaceId = f.spaceId;
     if (newSpace !== null) {
@@ -401,7 +412,7 @@ export function ProjectForm({ m, top }) {
       actions.save(s);
       spaceId = s.id;
     }
-    actions.save({ ...f, name, description: (f.description || "").trim(), spaceId });
+    actions.save({ ...f, name, description: (f.description || "").trim(), spaceId, links });
     toast(existing ? "Izmene sačuvane" : "Projekat sačuvan");
     m.onSaved ? m.onSaved(f.id) : close(m.mid);
   };
@@ -435,6 +446,21 @@ export function ProjectForm({ m, top }) {
         <Field label="Rok (opciono)" error={errors.dueDate} htmlFor="p-due"><input id="p-due" className="input" type="date" value={f.dueDate || ""} onChange={(e) => set("dueDate", e.target.value || null)} /></Field>
       </div>
       <Field label="Boja"><ColorPick value={f.color} onChange={(c) => set("color", c)} /></Field>
+      <fieldset className="fs">
+        <legend><Icon n="link" s={14} /> Linkovi</legend>
+        {f.links.length === 0 && <div className="field-hint">Drive folder, oglasni nalog, sajt, dizajn… Otvaraju se jednim klikom sa stranice projekta.</div>}
+        {f.links.map((l, i) => (
+          <div key={l.id} className="link-row">
+            <input id={`p-link-l-${i}`} className="input" value={l.label} onChange={(e) => setLink(i, "label", e.target.value)} placeholder="Naziv (npr. Drive)" maxLength={60} aria-label="Naziv linka" />
+            <div className="link-row-url">
+              <input id={`p-link-u-${i}`} className={`input ${errors[`link${i}`] ? "has-err-in" : ""}`} value={l.url} onChange={(e) => setLink(i, "url", e.target.value)} placeholder="https://…" inputMode="url" autoCapitalize="off" aria-label="Adresa linka" />
+              {errors[`link${i}`] && <div className="field-err">{errors[`link${i}`]}</div>}
+            </div>
+            <button type="button" className="icon-btn danger" aria-label="Ukloni link" onClick={() => set("links", f.links.filter((_, j) => j !== i))}><Icon n="x" s={16} /></button>
+          </div>
+        ))}
+        <button type="button" className="btn btn-sm add-link" onClick={() => set("links", [...f.links, { id: uid("l"), label: "", url: "" }])}><Icon n="plus" s={15} />Dodaj link</button>
+      </fieldset>
     </FormShell>
   );
 }
@@ -467,6 +493,37 @@ export function SpaceForm({ m, top }) {
     <FormShell m={m} top={top} title={existing ? "Uredi prostor" : "Novi prostor"} onSubmit={submit}>
       <Field label="Naziv" error={errors.name} htmlFor="s-name" hint="Šira oblast, npr. Posao, Privatno ili Učenje"><input id="s-name" className="input input-lg" value={f.name} onChange={(e) => set("name", e.target.value)} data-autofocus maxLength={60} /></Field>
       <Field label="Boja"><ColorPick value={f.color} onChange={(c) => set("color", c)} /></Field>
+    </FormShell>
+  );
+}
+
+// ---------- Brzo dodavanje linka (sa stranice projekta) ----------
+export function LinkForm({ m, top }) {
+  const { data, actions } = useStore();
+  const { close, toast } = useUI();
+  const p = data.projects[m.projectId];
+  const editing = p && m.linkId ? (p.links || []).find((l) => l.id === m.linkId) : null;
+  const [label, setLabel] = useState(editing?.label || "");
+  const [url, setUrl] = useState(editing?.url || "");
+  const [err, setErr] = useState(null);
+  if (!p) return null;
+  const submit = () => {
+    const u = normalizeUrl(url);
+    if (!u) return setErr("Upiši ispravnu adresu, npr. drive.google.com/…");
+    const link = { id: editing?.id || uid("l"), label: label.trim(), url: u };
+    const links = editing ? (p.links || []).map((l) => (l.id === editing.id ? link : l)) : [...(p.links || []), link];
+    actions.save({ ...p, links });
+    toast(editing ? "Link izmenjen" : "Link dodat");
+    close(m.mid);
+  };
+  return (
+    <FormShell m={m} top={top} title={editing ? "Uredi link" : `Novi link · ${p.name}`} onSubmit={submit}>
+      <Field label="Adresa" error={err} htmlFor="lk-url">
+        <input id="lk-url" className="input" value={url} onChange={(e) => { setUrl(e.target.value); setErr(null); }} placeholder="https://…" inputMode="url" autoCapitalize="off" data-autofocus />
+      </Field>
+      <Field label="Naziv (opciono)" htmlFor="lk-label" hint="Ako ostane prazno, prikazuje se adresa sajta.">
+        <input id="lk-label" className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="npr. Drive folder" maxLength={60} />
+      </Field>
     </FormShell>
   );
 }

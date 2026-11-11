@@ -168,6 +168,16 @@ export function supabaseAdapter(sb, user) {
       };
     },
     sync(old, nw) {
+      const gone = [];
+      for (const coll of ["tasks", "notes", "projects", "events"]) {
+        const a = old[coll] || {}, b = nw[coll] || {};
+        for (const id of Object.keys(a)) {
+          if (!a[id].attachments?.length) continue;
+          const keep = new Set(filesOf(b[id]));
+          for (const f of filesOf(a[id])) if (!keep.has(f)) gone.push(f);
+        }
+      }
+      if (gone.length) removeFiles(gone);
       for (const coll of COLLECTIONS) {
         const a = old[coll] || {}, b = nw[coll] || {};
         for (const id of Object.keys(a)) if (!b[id]) { state[coll].delete(id); enqueue(coll, id, "del"); }
@@ -182,3 +192,98 @@ export function supabaseAdapter(sb, user) {
     pending: pendingCount,
   };
 }
+
+// ============================================================
+// Prilozi (Supabase Storage, bucket „prilozi“, privatno)
+// ============================================================
+export const BUCKET = "prilozi";
+export const MAX_BYTES = 15 * 1024 * 1024;
+const ACCEPT = /^(image\/(jpeg|png|webp|gif|heic|heif)|application\/pdf)$/;
+
+export const storageError = (e) => {
+  const m = (e?.message || e?.error || "").toLowerCase();
+  if (m.includes("bucket not found") || m.includes("row-level security") || m.includes("unauthorized")) return "Prilozi još nisu podešeni u Supabase-u. Pokreni SQL iz supabase/storage.sql.";
+  if (m.includes("maximum allowed size") || m.includes("too large") || m.includes("payload")) return "Fajl je prevelik (najviše 15 MB).";
+  if (m.includes("mime") || m.includes("not supported")) return "Dozvoljene su samo slike i PDF fajlovi.";
+  if (m.includes("fetch") || m.includes("network")) return "Nema veze sa serverom. Probaj ponovo kad se veza vrati.";
+  return e?.message || "Otpremanje nije uspelo.";
+};
+
+const canvasBlob = (canvas, q) => new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", q));
+async function resizeImage(file, maxSide, quality) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  bmp.close?.();
+  return { blob: await canvasBlob(c, quality), w, h, srcW: Math.round(w / scale), srcH: Math.round(h / scale) };
+}
+
+/** Priprema fajl: velike slike smanjuje na 2560 px (JPEG), pravi sličicu od 480 px. */
+export async function prepareFile(file) {
+  const type = file.type || (/\.pdf$/i.test(file.name) ? "application/pdf" : "");
+  if (!ACCEPT.test(type)) throw new Error("Dozvoljene su samo slike (JPG, PNG, WebP, GIF, HEIC) i PDF.");
+  if (type === "application/pdf" || type === "image/gif") {
+    if (file.size > MAX_BYTES) throw new Error("Fajl je prevelik (najviše 15 MB).");
+    return { main: file, type, ext: type === "application/pdf" ? "pdf" : "gif", thumb: null };
+  }
+  try {
+    const big = file.size > 1.5 * 1024 * 1024;
+    const full = await resizeImage(file, 2560, 0.86);
+    const useOrig = !big && full.srcW <= 2560 && full.srcH <= 2560 && /jpeg|png|webp/.test(type);
+    const thumb = await resizeImage(file, 480, 0.8);
+    const main = useOrig ? file : full.blob;
+    if (main.size > MAX_BYTES) throw new Error("Fajl je prevelik (najviše 15 MB).");
+    return { main, type: useOrig ? type : "image/jpeg", ext: useOrig ? type.split("/")[1].replace("jpeg", "jpg") : "jpg", thumb: thumb.blob, w: full.srcW, h: full.srcH };
+  } catch (e) {
+    if (/prevelik/.test(e.message)) throw e;
+    if (file.size > MAX_BYTES) throw new Error("Fajl je prevelik (najviše 15 MB).");
+    return { main: file, type, ext: (file.name.split(".").pop() || "img").toLowerCase().slice(0, 5), thumb: null };
+  }
+}
+
+export async function uploadAttachment(kind, recId, file) {
+  const sb = getClient();
+  if (!sb) throw new Error("Prilozi rade samo kad si prijavljen.");
+  const { data } = await sb.auth.getSession();
+  const uidv = data.session?.user?.id;
+  if (!uidv) throw new Error("Prijavi se ponovo.");
+  const prep = await prepareFile(file);
+  const aid = `a-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  const base = `${uidv}/${kind}/${recId}/${aid}`;
+  const path = `${base}.${prep.ext}`;
+  const up = await sb.storage.from(BUCKET).upload(path, prep.main, { contentType: prep.type, cacheControl: "3600", upsert: false });
+  if (up.error) throw new Error(storageError(up.error));
+  let thumb = null;
+  if (prep.thumb) {
+    const t = await sb.storage.from(BUCKET).upload(`${base}-t.jpg`, prep.thumb, { contentType: "image/jpeg", cacheControl: "3600", upsert: false });
+    if (!t.error) thumb = `${base}-t.jpg`;
+  }
+  return { id: aid, name: file.name.slice(0, 160) || "fajl", type: prep.type, size: prep.main.size, path, thumb, w: prep.w || null, h: prep.h || null, createdAt: new Date().toISOString() };
+}
+
+const urlCache = new Map(); // path -> { url, exp }
+export async function signedUrls(paths) {
+  const sb = getClient();
+  if (!sb || !paths.length) return {};
+  const now = Date.now();
+  const need = paths.filter((p) => !(urlCache.get(p)?.exp > now + 60000));
+  if (need.length) {
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrls(need, 3600);
+    if (error) throw new Error(storageError(error));
+    for (const r of data || []) if (r.signedUrl && !r.error) urlCache.set(r.path, { url: r.signedUrl, exp: now + 3600 * 1000 });
+  }
+  return Object.fromEntries(paths.map((p) => [p, urlCache.get(p)?.url || null]));
+}
+
+export async function removeFiles(paths) {
+  const sb = getClient();
+  if (!sb || !paths.length) return;
+  for (let i = 0; i < paths.length; i += 100) await sb.storage.from(BUCKET).remove(paths.slice(i, i + 100)).catch(() => {});
+  paths.forEach((p) => urlCache.delete(p));
+}
+const filesOf = (rec) => (rec?.attachments || []).flatMap((a) => [a.path, a.thumb].filter(Boolean));

@@ -7,7 +7,8 @@ import {
 } from "./core.js";
 import { useStore } from "./store.jsx";
 import { useUI, Modal, Icon, PriorityTag, StatusTag, ProjectTag, SpaceTag, Tags, ConfirmModal, ProjectAvatar } from "./ui.jsx";
-import { TaskForm, EventForm, NoteForm, ProjectForm, SpaceForm } from "./forms.jsx";
+import { TaskForm, EventForm, NoteForm, ProjectForm, SpaceForm, LinkForm } from "./forms.jsx";
+import { Attachments, ImageModal } from "./attachments.jsx";
 
 const { useState, useMemo, useEffect, useRef } = React;
 
@@ -19,6 +20,8 @@ export function renderModal(m, top) {
     case "new": return <NewMenu m={m} top={top} />;
     case "export": return <ExportModal m={m} top={top} />;
     case "search": return <SearchModal m={m} top={top} />;
+    case "link": return <LinkForm m={m} top={top} />;
+    case "image": return <ImageModal m={m} top={top} />;
     default: return null;
   }
 }
@@ -126,6 +129,7 @@ function TaskView({ m, top }) {
         <Row icon="layers" label="Prostor">{(t.projectId ? data.projects[t.projectId]?.spaceId : t.spaceId) && <SpaceTag id={t.projectId ? data.projects[t.projectId]?.spaceId : t.spaceId} />}</Row>
         <Row icon="tag" label="Oznake">{t.tags?.length ? <Tags tags={t.tags} /> : null}</Row>
       </div>
+      <Attachments kind="task" id={t.id} compact />
       <div className="vmeta">Napravljeno {fmtStamp(t.createdAt)}{t.completedAt && <> · Završeno {fmtStamp(t.completedAt)}</>}</div>
     </Modal>
   );
@@ -185,6 +189,7 @@ function NoteView({ m, top }) {
         <Tags tags={n.tags} />
       </div>
       <div className="prose note-body" dangerouslySetInnerHTML={{ __html: sanitizeHtml(n.body) || "<p class='muted'>Bez teksta.</p>" }} />
+      <Attachments kind="note" id={n.id} compact />
       <div className="vmeta">Napravljeno {fmtStamp(n.createdAt)} · Izmenjeno {fmtStamp(n.updatedAt)}</div>
     </Modal>
   );
